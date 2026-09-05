@@ -51,7 +51,7 @@ def command_buttons(prefix: str, *, puzzle: bool) -> dict | None:
 
 
 def set_puzzle_level(level: int) -> None:
-    st.session_state["puzzle_selector"] = level
+    st.session_state["puzzle_selector_widget"] = level
 
 
 def render_board(*, key: str, props: dict, fallback_state: object | None) -> dict:
@@ -106,21 +106,24 @@ st.markdown(
 load_components()
 puzzles = load_puzzles()
 puzzle_labels = [f"{p.puzzle_id} | {p.rating} | {' '.join(p.themes[:3])}" for p in puzzles]
-st.session_state.setdefault("puzzle_selector", 0)
+st.session_state.setdefault("puzzle_selector_widget", 0)
+st.session_state.setdefault("level_memory_loaded", False)
 level_memory = check_component(
     component_name="local-storage",
     key="chess-puzzle-level-memory",
     props={
         "storageKey": "chesspuzzle:selected-level",
-        "value": None if not st.session_state.get("level_memory_loaded") else str(st.session_state["puzzle_selector"]),
+        "value": None if not st.session_state.get("level_memory_loaded") else str(st.session_state["puzzle_selector_widget"]),
     },
 )
-if not st.session_state.get("level_memory_loaded"):
+if not st.session_state["level_memory_loaded"]:
     memory_state = getattr(level_memory, "state", None)
-    remembered_level = memory_state.get("value") if isinstance(memory_state, dict) else None
-    if isinstance(remembered_level, str) and remembered_level.isdigit():
-        st.session_state["puzzle_selector"] = min(int(remembered_level), len(puzzles) - 1)
-    st.session_state["level_memory_loaded"] = True
+    if isinstance(memory_state, dict) and "value" in memory_state:
+        remembered_level = memory_state["value"]
+        if isinstance(remembered_level, str) and remembered_level.isdigit():
+            remembered_index = min(int(remembered_level), len(puzzles) - 1)
+            st.session_state["puzzle_selector_widget"] = remembered_index
+        st.session_state["level_memory_loaded"] = True
 st.session_state.setdefault("puzzle_reset_nonce", 0)
 st.session_state.setdefault("play_reset_nonce", 0)
 
@@ -134,7 +137,7 @@ with puzzle_tab:
             "Puzzle level",
             range(len(puzzles)),
             format_func=lambda index: puzzle_labels[index],
-            key="puzzle_selector",
+            key="puzzle_selector_widget",
         )
         previous_col, next_col, reset_col = st.columns(3)
         previous_col.button(
