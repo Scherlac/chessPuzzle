@@ -3,3 +3,5 @@ data/lichess_db_puzzle.csv.zst
 __pycache__/
 *.egg-info/
 node_modules/
+**/build/
+**/dist/

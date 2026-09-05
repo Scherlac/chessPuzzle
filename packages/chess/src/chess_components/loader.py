@@ -1,7 +1,6 @@
 from pathlib import Path
 import json
 
-import streamlit as st
 from streamlit.components.v2 import component
 
 

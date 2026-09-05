@@ -1,4 +1,4 @@
-"""Streamlit Components v2 used by the application."""
+"""Streamlit Components v2 for the Chess Puzzle app."""
 
 from .check import check_component
 from .loader import load_components

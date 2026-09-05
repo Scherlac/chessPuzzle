@@ -27,14 +27,7 @@ export default function (component) {
   const script = document.createElement("script");
   script.id = scriptId;
   script.textContent = browserComponentsSource;
-  script.onload = () => {
-    setStateValue("loaded", true);
-    setTriggerValue("loaded", true);
-  };
-  script.onerror = () => {
-    const message = "Unable to load browser-components.js";
-    setStateValue("error", message);
-    setTriggerValue("error", message);
-  };
   document.head.appendChild(script);
+  setStateValue("loaded", true);
+  setTriggerValue("loaded", true);
 }
