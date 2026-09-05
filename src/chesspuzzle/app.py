@@ -1,3 +1,5 @@
+from dataclasses import asdict
+
 import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
@@ -13,6 +15,7 @@ puzzles = load_puzzles()
 puzzle_labels = [f"{p.puzzle_id} | {p.rating} | {' '.join(p.themes[:3])}" for p in puzzles]
 selected_label = st.selectbox("Puzzle", puzzle_labels)
 selected_puzzle = puzzles[puzzle_labels.index(selected_label)]
+puzzle_color = "white" if selected_puzzle.fen.split()[1] == "b" else "black"
 
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -37,8 +40,8 @@ result = check_component(
     component_name="chess-board",
     key=f"chess-board-{selected_puzzle.puzzle_id}-{reset_nonce}",
     props={
-        "orientation": "white",
-        "playAs": "white",
+        "orientation": puzzle_color,
+        "playAs": puzzle_color,
         "enginePolicy": engine_policy,
         "engineLevel": engine_level,
         "puzzleMode": puzzle_mode,
@@ -47,4 +50,5 @@ result = check_component(
     },
 )
 st.caption(f"Puzzle {selected_puzzle.puzzle_id} | Rating {selected_puzzle.rating}")
+st.json(asdict(selected_puzzle.evaluation))
 st.json(getattr(result, "state", None) or getattr(result, "result", None))

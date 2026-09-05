@@ -5718,9 +5718,11 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
   function createChessBoard(target, props, bridge) {
     const options = props ?? {};
     let game = new Chess(options.fen);
+    const initialTurn = game.turn();
     const playerColor = options.playAs ?? "white";
-    const playerTurn = playerColor === "white" ? "w" : "b";
     const puzzleMoves = options.puzzleMoves ?? [];
+    const hasSetupMove = options.puzzleMode === true && puzzleMoves.length > 0;
+    const playerTurn = hasSetupMove ? initialTurn === "w" ? "b" : "w" : playerColor === "white" ? "w" : "b";
     const componentApi = bridge ?? { setStateValue: () => void 0, setTriggerValue: () => void 0 };
     const wrapper = document.createElement("div");
     wrapper.className = "chess-board-wrapper";
@@ -5731,7 +5733,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     const undoButton = document.createElement("button");
     undoButton.type = "button";
     undoButton.className = "chess-board-undo";
-    undoButton.textContent = "Take back one ply";
+    undoButton.textContent = "Take back one turn";
     board.draggablePieces = true;
     board.orientation = options.orientation ?? playerColor;
     wrapper.append(board, status, undoButton);
@@ -5762,8 +5764,8 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         canUndo: history.length > 0,
         puzzle: {
           enabled: Boolean(options.puzzleMode),
-          expected: puzzleMoves.length,
-          completed: puzzleIndex,
+          expected: hasSetupMove ? puzzleMoves.length - 1 : puzzleMoves.length,
+          completed: hasSetupMove ? Math.max(0, puzzleIndex - 1) : puzzleIndex,
           deviated: puzzleDeviated,
           complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length
         }
@@ -5811,6 +5813,17 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         return false;
       }
     };
+    if (hasSetupMove) {
+      const setupMove = puzzleMoves[0];
+      try {
+        const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
+        gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });
+        puzzleIndex = 1;
+        board.setPosition(game.fen());
+      } catch {
+        setStatus("Puzzle setup move is invalid");
+      }
+    }
     const handleEngineMessage = (message) => {
       if (message === "uciok") {
         sendEngine(`setoption name Skill Level value ${Math.max(0, Math.min(20, Number(options.engineLevel ?? 10)))}`);
@@ -5860,9 +5873,10 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       publishState();
       requestAnalysis();
     };
-    const undoLastMove = () => {
-      const snapshot = history.pop();
+    const undoLastTurn = () => {
+      let snapshot = history.pop();
       if (!snapshot) return;
+      if (history.length > 0) snapshot = history.pop() ?? snapshot;
       sendEngine("stop");
       engineThinking = false;
       game = new Chess(snapshot.fen);
@@ -5872,17 +5886,17 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       enginePlan = snapshot.enginePlan;
       evaluation = snapshot.evaluation;
       board.setPosition(game.fen());
-      setStatus("Took back one ply");
+      setStatus("Took back one turn for both players");
       publishState();
     };
     board.addEventListener("drop", handleDrop);
-    undoButton.addEventListener("click", undoLastMove);
+    undoButton.addEventListener("click", undoLastTurn);
     setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
     if (options.enginePolicy) engine = createEngine(handleEngineMessage);
     publishState();
     return () => {
       board.removeEventListener("drop", handleDrop);
-      undoButton.removeEventListener("click", undoLastMove);
+      undoButton.removeEventListener("click", undoLastTurn);
       engine?.terminate();
       wrapper.remove();
     };

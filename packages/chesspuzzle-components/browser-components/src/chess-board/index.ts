@@ -58,9 +58,13 @@ function colorName(color: "w" | "b"): "white" | "black" {
 export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: ComponentBridge): () => void {
   const options = (props ?? {}) as BoardProps;
   let game = new Chess(options.fen);
+  const initialTurn = game.turn();
   const playerColor = options.playAs ?? "white";
-  const playerTurn = playerColor === "white" ? "w" : "b";
   const puzzleMoves = options.puzzleMoves ?? [];
+  const hasSetupMove = options.puzzleMode === true && puzzleMoves.length > 0;
+  const playerTurn = hasSetupMove
+    ? initialTurn === "w" ? "b" : "w"
+    : playerColor === "white" ? "w" : "b";
   const componentApi = bridge ?? { setStateValue: () => undefined, setTriggerValue: () => undefined };
   const wrapper = document.createElement("div");
   wrapper.className = "chess-board-wrapper";
@@ -71,7 +75,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   const undoButton = document.createElement("button");
   undoButton.type = "button";
   undoButton.className = "chess-board-undo";
-  undoButton.textContent = "Take back one ply";
+  undoButton.textContent = "Take back one turn";
   board.draggablePieces = true;
   board.orientation = options.orientation ?? playerColor;
   wrapper.append(board, status, undoButton);
@@ -96,7 +100,8 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       fen: game.fen(), turn: colorName(game.turn()), status: status.textContent ?? "",
       gameSteps: [...gameSteps], enginePlan: [...enginePlan], evaluation: { ...evaluation },
       canUndo: history.length > 0,
-      puzzle: { enabled: Boolean(options.puzzleMode), expected: puzzleMoves.length, completed: puzzleIndex,
+      puzzle: { enabled: Boolean(options.puzzleMode), expected: hasSetupMove ? puzzleMoves.length - 1 : puzzleMoves.length,
+        completed: hasSetupMove ? Math.max(0, puzzleIndex - 1) : puzzleIndex,
         deviated: puzzleDeviated, complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length },
     };
     undoButton.disabled = history.length === 0;
@@ -139,6 +144,17 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       return true;
     } catch { return false; }
   };
+  if (hasSetupMove) {
+    const setupMove = puzzleMoves[0];
+    try {
+      const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
+      gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });
+      puzzleIndex = 1;
+      board.setPosition(game.fen());
+    } catch {
+      setStatus("Puzzle setup move is invalid");
+    }
+  }
   const handleEngineMessage = (message: string) => {
     if (message === "uciok") {
       sendEngine(`setoption name Skill Level value ${Math.max(0, Math.min(20, Number(options.engineLevel ?? 10)))}`);
@@ -183,9 +199,10 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
     requestAnalysis();
   };
 
-  const undoLastMove = () => {
-    const snapshot = history.pop();
+  const undoLastTurn = () => {
+    let snapshot = history.pop();
     if (!snapshot) return;
+    if (history.length > 0) snapshot = history.pop() ?? snapshot;
     sendEngine("stop");
     engineThinking = false;
     game = new Chess(snapshot.fen);
@@ -195,18 +212,18 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
     enginePlan = snapshot.enginePlan;
     evaluation = snapshot.evaluation;
     board.setPosition(game.fen());
-    setStatus("Took back one ply");
+    setStatus("Took back one turn for both players");
     publishState();
   };
 
   board.addEventListener("drop", handleDrop);
-  undoButton.addEventListener("click", undoLastMove);
+  undoButton.addEventListener("click", undoLastTurn);
   setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
   if (options.enginePolicy) engine = createEngine(handleEngineMessage);
   publishState();
   return () => {
     board.removeEventListener("drop", handleDrop);
-    undoButton.removeEventListener("click", undoLastMove);
+    undoButton.removeEventListener("click", undoLastTurn);
     engine?.terminate();
     wrapper.remove();
   };

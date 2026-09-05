@@ -2,6 +2,13 @@
 
 from .check import check_component
 from .loader import load_components
-from .puzzles import Puzzle, load_puzzles
+from .puzzles import Puzzle, PuzzleEvaluation, evaluate_puzzle, load_puzzles
 
-__all__ = ["Puzzle", "check_component", "load_components", "load_puzzles"]
+__all__ = [
+	"Puzzle",
+	"PuzzleEvaluation",
+	"check_component",
+	"evaluate_puzzle",
+	"load_components",
+	"load_puzzles",
+]
