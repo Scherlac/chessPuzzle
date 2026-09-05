@@ -1,0 +1,40 @@
+const registryKey = "__CHESS_PUZZLE_COMPONENTS__";
+const scriptId = "chesspuzzle-browser-components";
+
+export default function (component) {
+  const { setStateValue, setTriggerValue } = component;
+  const browserComponentsSource = "__BROWSER_COMPONENTS_SOURCE__";
+
+  if (window[registryKey]) {
+    setStateValue("loaded", true);
+    setTriggerValue("loaded", true);
+    return;
+  }
+
+  const existingScript = document.getElementById(scriptId);
+  if (existingScript) {
+    existingScript.addEventListener("load", () => {
+      setStateValue("loaded", true);
+      setTriggerValue("loaded", true);
+    }, { once: true });
+    existingScript.addEventListener("error", () => {
+      setStateValue("error", "Unable to load browser-components.js");
+      setTriggerValue("error", "Unable to load browser-components.js");
+    }, { once: true });
+    return;
+  }
+
+  const script = document.createElement("script");
+  script.id = scriptId;
+  script.textContent = browserComponentsSource;
+  script.onload = () => {
+    setStateValue("loaded", true);
+    setTriggerValue("loaded", true);
+  };
+  script.onerror = () => {
+    const message = "Unable to load browser-components.js";
+    setStateValue("error", message);
+    setTriggerValue("error", message);
+  };
+  document.head.appendChild(script);
+}

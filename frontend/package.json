@@ -1,0 +1,20 @@
+{
+  "name": "chesspuzzle-frontend",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build:browser-components",
+    "build:browser-components": "esbuild packages/browser-components/src/index.ts --bundle --format=iife --platform=browser --outfile=../chesspuzzle/components/assets/browser-components.js",
+    "clean": "node -e \"require('fs').rmSync('packages/browser-components/dist', { recursive: true, force: true })\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint packages --max-warnings=0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.22.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.26.0"
+  }
+}
