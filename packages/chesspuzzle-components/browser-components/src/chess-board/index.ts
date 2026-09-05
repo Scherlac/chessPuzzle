@@ -11,6 +11,7 @@ type BoardProps = {
   engineLevel?: number;
   puzzleMode?: boolean;
   puzzleMoves?: string[];
+  state?: ComponentState;
 };
 type ComponentBridge = {
   setStateValue: (name: string, value: unknown) => void;
@@ -47,6 +48,7 @@ type ComponentState = {
   gameSteps: GameStep[];
   enginePlan: string[];
   evaluation: Evaluation;
+  history: Snapshot[];
   canUndo: boolean;
   puzzle: { enabled: boolean; expected: number; completed: number; deviated: boolean; complete: boolean };
 };
@@ -65,8 +67,10 @@ function colorName(color: "w" | "b"): "white" | "black" {
 
 export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: ComponentBridge): () => void {
   const options = (props ?? {}) as BoardProps;
-  let game = new Chess(options.fen);
-  const initialTurn = game.turn();
+  const savedState = options.state;
+  const initialGame = new Chess(options.fen);
+  let game = new Chess(savedState?.fen ?? options.fen);
+  const initialTurn = initialGame.turn();
   const playerColor = options.playAs ?? "white";
   const puzzleMoves = options.puzzleMoves ?? [];
   const hasSetupMove = options.puzzleMode === true && puzzleMoves.length > 0;
@@ -107,12 +111,14 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   let engine: Worker | undefined;
   let engineReady = false;
   let engineThinking = false;
-  let puzzleIndex = 0;
-  let puzzleDeviated = false;
-  let enginePlan: string[] = [];
-  let evaluation: Evaluation = { score: null, mate: null, depth: null };
-  const gameSteps: GameStep[] = [];
-  const history: Snapshot[] = [];
+  let puzzleIndex = savedState
+    ? hasSetupMove ? savedState.puzzle.completed + 1 : savedState.puzzle.completed
+    : 0;
+  let puzzleDeviated = savedState?.puzzle.deviated ?? false;
+  let enginePlan: string[] = savedState?.enginePlan ? [...savedState.enginePlan] : [];
+  let evaluation: Evaluation = savedState?.evaluation ?? { score: null, mate: null, depth: null };
+  const gameSteps: GameStep[] = savedState?.gameSteps ? [...savedState.gameSteps] : [];
+  const history: Snapshot[] = savedState?.history ? [...savedState.history] : [];
 
   const setStatus = (message: string) => { status.textContent = message; };
   const logBoardState = (label: string, details: Record<string, unknown> = {}) => {
@@ -145,7 +151,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   const publishState = () => {
     const state: ComponentState = {
       fen: game.fen(), turn: colorName(game.turn()), status: status.textContent ?? "",
-      gameSteps: [...gameSteps], enginePlan: [...enginePlan], evaluation: { ...evaluation },
+      gameSteps: [...gameSteps], enginePlan: [...enginePlan], evaluation: { ...evaluation }, history: [...history],
       canUndo: history.length > 0,
       puzzle: { enabled: Boolean(options.puzzleMode), expected: hasSetupMove ? puzzleMoves.length - 1 : puzzleMoves.length,
         completed: hasSetupMove ? Math.max(0, puzzleIndex - 1) : puzzleIndex,
@@ -196,7 +202,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       return false;
     }
   };
-  if (hasSetupMove) {
+  if (hasSetupMove && !savedState) {
     const setupMove = puzzleMoves[0];
     try {
       const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
@@ -306,7 +312,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
 
   board.addEventListener("drop", handleDrop);
   undoButton.addEventListener("click", undoLastTurn);
-  setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
+  setStatus(savedState?.status ?? (options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`));
   if (options.enginePolicy) engine = createEngine(handleEngineMessage);
   publishState();
   return () => {

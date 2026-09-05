@@ -5717,8 +5717,10 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
   }
   function createChessBoard(target, props, bridge) {
     const options = props ?? {};
-    let game = new Chess(options.fen);
-    const initialTurn = game.turn();
+    const savedState = options.state;
+    const initialGame = new Chess(options.fen);
+    let game = new Chess(savedState?.fen ?? options.fen);
+    const initialTurn = initialGame.turn();
     const playerColor = options.playAs ?? "white";
     const puzzleMoves = options.puzzleMoves ?? [];
     const hasSetupMove = options.puzzleMode === true && puzzleMoves.length > 0;
@@ -5756,12 +5758,12 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     let engine;
     let engineReady = false;
     let engineThinking = false;
-    let puzzleIndex = 0;
-    let puzzleDeviated = false;
-    let enginePlan = [];
-    let evaluation = { score: null, mate: null, depth: null };
-    const gameSteps = [];
-    const history = [];
+    let puzzleIndex = savedState ? hasSetupMove ? savedState.puzzle.completed + 1 : savedState.puzzle.completed : 0;
+    let puzzleDeviated = savedState?.puzzle.deviated ?? false;
+    let enginePlan = savedState?.enginePlan ? [...savedState.enginePlan] : [];
+    let evaluation = savedState?.evaluation ?? { score: null, mate: null, depth: null };
+    const gameSteps = savedState?.gameSteps ? [...savedState.gameSteps] : [];
+    const history = savedState?.history ? [...savedState.history] : [];
     const setStatus = (message) => {
       status.textContent = message;
     };
@@ -5800,6 +5802,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         gameSteps: [...gameSteps],
         enginePlan: [...enginePlan],
         evaluation: { ...evaluation },
+        history: [...history],
         canUndo: history.length > 0,
         puzzle: {
           enabled: Boolean(options.puzzleMode),
@@ -5855,7 +5858,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         return false;
       }
     };
-    if (hasSetupMove) {
+    if (hasSetupMove && !savedState) {
       const setupMove = puzzleMoves[0];
       try {
         const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
@@ -5964,7 +5967,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     };
     board.addEventListener("drop", handleDrop);
     undoButton.addEventListener("click", undoLastTurn);
-    setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
+    setStatus(savedState?.status ?? (options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`));
     if (options.enginePolicy) engine = createEngine(handleEngineMessage);
     publishState();
     return () => {

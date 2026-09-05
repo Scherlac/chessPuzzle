@@ -36,9 +36,13 @@ if st.button("Reset puzzle"):
     st.session_state["reset_nonce"] += 1
     st.rerun()
 
+component_key = f"chess-board-{selected_puzzle.puzzle_id}-{reset_nonce}"
+stored_component = st.session_state.get(component_key, {})
+saved_state = stored_component.get("state") if isinstance(stored_component, dict) else None
+
 result = check_component(
     component_name="chess-board",
-    key=f"chess-board-{selected_puzzle.puzzle_id}-{reset_nonce}",
+    key=component_key,
     props={
         "orientation": puzzle_color,
         "playAs": puzzle_color,
@@ -47,6 +51,7 @@ result = check_component(
         "puzzleMode": puzzle_mode,
         "puzzleMoves": selected_puzzle.moves,
         "fen": selected_puzzle.fen,
+        "state": saved_state,
     },
 )
 st.caption(f"Puzzle {selected_puzzle.puzzle_id} | Rating {selected_puzzle.rating}")

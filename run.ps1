@@ -8,9 +8,35 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $App = Join-Path $Root "src\chesspuzzle\app.py"
+$Frontend = Join-Path $Root "packages\chesspuzzle-components\browser-components"
+$FrontendOutput = Join-Path $Root "packages\chesspuzzle-components\src\chess_components\assets\browser-components.js"
 
-if (-not $NoBuild -or -not (Test-Path $Python)) {
+function Test-BuildNeeded {
+    if (-not (Test-Path $Python) -or -not (Test-Path $FrontendOutput)) {
+        return $true
+    }
+
+    $outputTime = (Get-Item $FrontendOutput).LastWriteTimeUtc
+    $inputs = @(
+        (Join-Path $Frontend "src"),
+        (Join-Path $Frontend "package.json"),
+        (Join-Path $Frontend "package-lock.json"),
+        (Join-Path $Frontend "build.mjs"),
+        (Join-Path $Root "packages\chesspuzzle-components\src\chess_components\assets\checker.js"),
+        (Join-Path $Root "packages\chesspuzzle-components\src\chess_components\assets\loader.js")
+    )
+
+    $newestInput = Get-ChildItem $inputs -File -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    return $null -eq $newestInput -or $newestInput.LastWriteTimeUtc -gt $outputTime
+}
+
+if (-not (Test-Path $Python) -or (-not $NoBuild -and (Test-BuildNeeded))) {
+    Write-Host "Build output is missing or stale; running build..."
     & (Join-Path $Root "build.ps1")
+} elseif (-not $NoBuild) {
+    Write-Host "Build output is up to date; skipping build."
 }
 
 if (-not (Test-Path $Python)) {
