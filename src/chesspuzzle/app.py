@@ -1,6 +1,6 @@
 import streamlit as st
 
-from chesspuzzle.components import check_component, load_components
+from chess_components import check_component, load_components
 
 
 st.set_page_config(page_title="Chess Puzzle")
