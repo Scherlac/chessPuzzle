@@ -1,12 +1,19 @@
 from dataclasses import asdict
+import logging
+from time import perf_counter
 
 import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
 
 
+logger = logging.getLogger("chesspuzzle")
+
+
 st.set_page_config(page_title="Chess Puzzle")
 
+run_started = perf_counter()
+logger.info("Streamlit run started")
 st.title("Chess Puzzle")
 load_components()
 reset_nonce = st.session_state.setdefault("reset_nonce", 0)
@@ -39,7 +46,16 @@ if st.button("Reset puzzle"):
 component_key = f"chess-board-{selected_puzzle.puzzle_id}-{reset_nonce}"
 stored_component = st.session_state.get(component_key, {})
 saved_state = stored_component.get("state") if isinstance(stored_component, dict) else None
+logger.info(
+    "Rendering component key=%s puzzle=%s mode=%s engine=%s saved_state=%s",
+    component_key,
+    selected_puzzle.puzzle_id,
+    puzzle_mode,
+    engine_policy,
+    bool(saved_state),
+)
 
+component_started = perf_counter()
 result = check_component(
     component_name="chess-board",
     key=component_key,
@@ -54,6 +70,7 @@ result = check_component(
         "state": saved_state,
     },
 )
+logger.info("Component call completed in %.3fs; total run %.3fs", perf_counter() - component_started, perf_counter() - run_started)
 st.caption(f"Puzzle {selected_puzzle.puzzle_id} | Rating {selected_puzzle.rating}")
 st.json(asdict(selected_puzzle.evaluation))
 st.json(getattr(result, "state", None) or getattr(result, "result", None))
