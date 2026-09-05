@@ -9,6 +9,6 @@ st.title("Chess Puzzle")
 load_components()
 result = check_component(
 	component_name="chess-board",
-	props={"orientation": "white"},
+	props={"orientation": "white", "playAs": "white", "engine": True},
 )
 st.json(result)

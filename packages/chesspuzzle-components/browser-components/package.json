@@ -2,15 +2,14 @@
   "name": "chesspuzzle-frontend",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
   "scripts": {
     "build": "npm run build:browser-components",
-    "build:browser-components": "esbuild packages/browser-components/src/index.ts --bundle --format=iife --platform=browser --loader:.html=text --loader:.css=text --outfile=../src/chess_components/assets/browser-components.js",
+    "build:browser-components": "node build.mjs",
     "build:python": "cd .. && uv run --with build python -m build --wheel --outdir dist",
     "package": "npm run build && npm run build:python",
-    "clean": "node -e \"require('fs').rmSync('packages/browser-components/dist', { recursive: true, force: true })\"",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint packages --max-warnings=0"
+    "lint": "eslint src --max-warnings=0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
@@ -18,5 +17,10 @@
     "eslint": "^9.22.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.26.0"
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "chessboard-element": "^1.2.0",
+    "stockfish.js": "^10.0.2"
   }
 }

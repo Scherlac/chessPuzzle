@@ -6,6 +6,7 @@ export default function (component) {
   const browserComponentsSource = "__BROWSER_COMPONENTS_SOURCE__";
 
   if (window[registryKey]) {
+    window.dispatchEvent(new CustomEvent("chesspuzzle-components-ready"));
     setStateValue("loaded", true);
     setTriggerValue("loaded", true);
     return;
@@ -28,6 +29,7 @@ export default function (component) {
   script.id = scriptId;
   script.textContent = browserComponentsSource;
   document.head.appendChild(script);
+  window.dispatchEvent(new CustomEvent("chesspuzzle-components-ready"));
   setStateValue("loaded", true);
   setTriggerValue("loaded", true);
 }

@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 $Package = Join-Path $Root "packages\chesspuzzle-components"
-$Frontend = Join-Path $Package "frontend"
+$Frontend = Join-Path $Package "browser-components"
 $Python = Join-Path $Root ".venv\Scripts\python.exe"
 $Npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
 
