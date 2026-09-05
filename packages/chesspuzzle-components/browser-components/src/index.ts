@@ -11,6 +11,28 @@ export type BrowserComponent = (
 
 const components: Record<string, BrowserComponent> = {
   "chess-board": createChessBoard,
+  "local-storage": (target, props, bridge) => {
+    const options = (props ?? {}) as { storageKey?: string; value?: string | null };
+    const key = options.storageKey ?? "chesspuzzle-value";
+    const publish = (value: string | null) => {
+      bridge?.setStateValue("value", value);
+      bridge?.setTriggerValue("value", value);
+    };
+    if (options.value === undefined || options.value === null) {
+      publish(window.localStorage.getItem(key));
+    } else {
+      window.localStorage.setItem(key, options.value);
+      publish(options.value);
+    }
+    (target as HTMLElement & { __chesspuzzleUpdate?: (next: unknown) => void }).__chesspuzzleUpdate = (next) => {
+      const value = (next as { value?: string | null })?.value;
+      if (value !== undefined && value !== null) {
+        window.localStorage.setItem(key, value);
+        publish(value);
+      }
+    };
+    return () => undefined;
+  },
   status: (target, props) => {
     target.textContent = JSON.stringify(props ?? { ready: true });
   },

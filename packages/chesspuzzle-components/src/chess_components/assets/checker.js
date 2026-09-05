@@ -6,9 +6,12 @@ export default function (component) {
 
   const configuration = { ...(data?.props ?? {}) };
   delete configuration.state;
+  delete configuration.command;
+  delete configuration.value;
   const configurationSignature = JSON.stringify(configuration);
   const existingState = parentElement.__chesspuzzleCheckerState;
   if (existingState && existingState.name === name && existingState.configurationSignature === configurationSignature) {
+    existingState.update?.(data?.props);
     console.info("[chess-checker] reusing existing component", { elapsedMs: performance.now() - startedAt });
     return () => {};
   }
@@ -50,7 +53,13 @@ export default function (component) {
     target.dataset.chesspuzzleCheckerTarget = "true";
     parentElement.appendChild(target);
     cleanup = registry[name](target, data?.props, { setStateValue, setTriggerValue });
-    parentElement.__chesspuzzleCheckerState = { name, configurationSignature, target, cleanup };
+    parentElement.__chesspuzzleCheckerState = {
+      name,
+      configurationSignature,
+      target,
+      cleanup,
+      update: (nextProps) => target.__chesspuzzleUpdate?.(nextProps),
+    };
     console.info("[chess-checker] mounted", { elapsedMs: performance.now() - startedAt, hasCleanup: typeof cleanup === "function" });
     const result = { component_name: name, loaded: true, bridged: true };
     setStateValue("result", result);
