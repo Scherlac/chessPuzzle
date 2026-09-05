@@ -24,6 +24,14 @@ type BoardElement = HTMLElement & {
 type DropEvent = CustomEvent<{ source: string; target: string; setAction(action: "snapback" | "trash"): void }>;
 type GameStep = { ply: number; move: string; san: string; actor: "player" | "stockfish" | "puzzle" };
 type Evaluation = { score: number | null; mate: number | null; depth: number | null };
+type Snapshot = {
+  fen: string;
+  steps: GameStep[];
+  puzzleIndex: number;
+  puzzleDeviated: boolean;
+  enginePlan: string[];
+  evaluation: Evaluation;
+};
 type ComponentState = {
   fen: string;
   turn: "white" | "black";
@@ -31,6 +39,7 @@ type ComponentState = {
   gameSteps: GameStep[];
   enginePlan: string[];
   evaluation: Evaluation;
+  canUndo: boolean;
   puzzle: { enabled: boolean; expected: number; completed: number; deviated: boolean; complete: boolean };
 };
 
@@ -48,7 +57,7 @@ function colorName(color: "w" | "b"): "white" | "black" {
 
 export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: ComponentBridge): () => void {
   const options = (props ?? {}) as BoardProps;
-  const game = new Chess(options.fen);
+  let game = new Chess(options.fen);
   const playerColor = options.playAs ?? "white";
   const playerTurn = playerColor === "white" ? "w" : "b";
   const puzzleMoves = options.puzzleMoves ?? [];
@@ -59,9 +68,13 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   const status = document.createElement("output");
   status.className = "chess-board-status";
   status.setAttribute("aria-live", "polite");
+  const undoButton = document.createElement("button");
+  undoButton.type = "button";
+  undoButton.className = "chess-board-undo";
+  undoButton.textContent = "Take back one ply";
   board.draggablePieces = true;
   board.orientation = options.orientation ?? playerColor;
-  wrapper.append(board, status);
+  wrapper.append(board, status, undoButton);
   board.setPosition(game.fen(), false);
   const style = document.createElement("style");
   style.textContent = styles;
@@ -75,15 +88,18 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   let enginePlan: string[] = [];
   let evaluation: Evaluation = { score: null, mate: null, depth: null };
   const gameSteps: GameStep[] = [];
+  const history: Snapshot[] = [];
 
   const setStatus = (message: string) => { status.textContent = message; };
   const publishState = () => {
     const state: ComponentState = {
       fen: game.fen(), turn: colorName(game.turn()), status: status.textContent ?? "",
       gameSteps: [...gameSteps], enginePlan: [...enginePlan], evaluation: { ...evaluation },
+      canUndo: history.length > 0,
       puzzle: { enabled: Boolean(options.puzzleMode), expected: puzzleMoves.length, completed: puzzleIndex,
         deviated: puzzleDeviated, complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length },
     };
+    undoButton.disabled = history.length === 0;
     componentApi.setStateValue("state", state);
     componentApi.setTriggerValue("updated", state);
   };
@@ -97,7 +113,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
     if (!options.puzzleMode || puzzleDeviated || !expectedMove || game.turn() === playerTurn) return false;
     if (!applyMove(expectedMove, "puzzle")) return false;
     puzzleIndex += 1;
-    setStatus(`Your move (${playerColor})`);
+    setStatus(`Puzzle opponent played ${gameSteps[gameSteps.length - 1].san}. Your move (${playerColor})`);
     publishState();
     return true;
   };
@@ -111,8 +127,13 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
     publishState();
   };
   const applyMove = (uci: string, actor: GameStep["actor"]): boolean => {
+    const snapshot: Snapshot = {
+      fen: game.fen(), steps: [...gameSteps], puzzleIndex, puzzleDeviated,
+      enginePlan: [...enginePlan], evaluation: { ...evaluation },
+    };
     try {
       const move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
+      history.push(snapshot);
       gameSteps.push({ ply: gameSteps.length + 1, move: uci, san: move.san, actor });
       board.setPosition(game.fen());
       return true;
@@ -138,7 +159,8 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       const move = message.split(" ")[1];
       if (move && move !== "(none)" && engineCanMove() && applyMove(move, puzzleDeviated ? "stockfish" : "puzzle")) {
         if (options.puzzleMode && !puzzleDeviated) puzzleIndex += 1;
-        setStatus(game.isGameOver() ? "Game over" : `Your move (${playerColor})`);
+        const lastStep = gameSteps[gameSteps.length - 1];
+        setStatus(game.isGameOver() ? "Game over" : `${lastStep.actor === "stockfish" ? "Stockfish takeover" : "Puzzle opponent"}: ${lastStep.san}. Your move (${playerColor})`);
       }
       publishState();
     }
@@ -156,14 +178,36 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       setAction("snapback"); setStatus("That move is not legal"); publishState(); return;
     }
     if (!puzzleDeviated && expectedMove) puzzleIndex += 1;
-    setStatus(game.isGameOver() ? "Game over" : `Move accepted (${colorName(game.turn())} to move)`);
+    setStatus(game.isGameOver() ? "Game over" : puzzleDeviated ? "Stockfish takeover active" : `Move accepted (${colorName(game.turn())} to move)`);
     publishState();
     requestAnalysis();
   };
 
+  const undoLastMove = () => {
+    const snapshot = history.pop();
+    if (!snapshot) return;
+    sendEngine("stop");
+    engineThinking = false;
+    game = new Chess(snapshot.fen);
+    gameSteps.splice(0, gameSteps.length, ...snapshot.steps);
+    puzzleIndex = snapshot.puzzleIndex;
+    puzzleDeviated = snapshot.puzzleDeviated;
+    enginePlan = snapshot.enginePlan;
+    evaluation = snapshot.evaluation;
+    board.setPosition(game.fen());
+    setStatus("Took back one ply");
+    publishState();
+  };
+
   board.addEventListener("drop", handleDrop);
+  undoButton.addEventListener("click", undoLastMove);
   setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
   if (options.enginePolicy) engine = createEngine(handleEngineMessage);
   publishState();
-  return () => { board.removeEventListener("drop", handleDrop); engine?.terminate(); wrapper.remove(); };
+  return () => {
+    board.removeEventListener("drop", handleDrop);
+    undoButton.removeEventListener("click", undoLastMove);
+    engine?.terminate();
+    wrapper.remove();
+  };
 }

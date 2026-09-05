@@ -5702,7 +5702,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
 `;
 
   // src/chess-board/board.css
-  var board_default = ".chess-board-wrapper {\r\n  display: grid;\r\n  gap: 0.75rem;\r\n  width: min(80vw, 520px);\r\n}\r\n\r\nchess-board {\r\n  --light-color: #f0d9b5;\r\n  --dark-color: #b58863;\r\n  --highlight-color: #e76f51;\r\n  display: block;\r\n  width: 100%;\r\n}\r\n\r\n.chess-board-status {\r\n  min-height: 1.5rem;\r\n  color: #263238;\r\n  font: 600 0.9rem/1.5 sans-serif;\r\n}";
+  var board_default = ".chess-board-wrapper {\r\n  display: grid;\r\n  gap: 0.75rem;\r\n  width: min(80vw, 520px);\r\n}\r\n\r\nchess-board {\r\n  --light-color: #f0d9b5;\r\n  --dark-color: #b58863;\r\n  --highlight-color: #e76f51;\r\n  display: block;\r\n  width: 100%;\r\n}\r\n\r\n.chess-board-status {\r\n  min-height: 1.5rem;\r\n  color: #263238;\r\n  font: 600 0.9rem/1.5 sans-serif;\r\n}\r\n\r\n.chess-board-undo {\r\n  width: fit-content;\r\n  border: 1px solid #8d6e63;\r\n  border-radius: 4px;\r\n  padding: 0.4rem 0.7rem;\r\n  background: #fffaf2;\r\n  color: #4e342e;\r\n  cursor: pointer;\r\n}\r\n\r\n.chess-board-undo:disabled {\r\n  cursor: not-allowed;\r\n  opacity: 0.5;\r\n}";
 
   // src/chess-board/index.ts
   function createEngine(onMessage) {
@@ -5717,7 +5717,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
   }
   function createChessBoard(target, props, bridge) {
     const options = props ?? {};
-    const game = new Chess(options.fen);
+    let game = new Chess(options.fen);
     const playerColor = options.playAs ?? "white";
     const playerTurn = playerColor === "white" ? "w" : "b";
     const puzzleMoves = options.puzzleMoves ?? [];
@@ -5728,9 +5728,13 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     const status = document.createElement("output");
     status.className = "chess-board-status";
     status.setAttribute("aria-live", "polite");
+    const undoButton = document.createElement("button");
+    undoButton.type = "button";
+    undoButton.className = "chess-board-undo";
+    undoButton.textContent = "Take back one ply";
     board.draggablePieces = true;
     board.orientation = options.orientation ?? playerColor;
-    wrapper.append(board, status);
+    wrapper.append(board, status, undoButton);
     board.setPosition(game.fen(), false);
     const style = document.createElement("style");
     style.textContent = board_default;
@@ -5743,6 +5747,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     let enginePlan = [];
     let evaluation = { score: null, mate: null, depth: null };
     const gameSteps = [];
+    const history = [];
     const setStatus = (message) => {
       status.textContent = message;
     };
@@ -5754,6 +5759,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         gameSteps: [...gameSteps],
         enginePlan: [...enginePlan],
         evaluation: { ...evaluation },
+        canUndo: history.length > 0,
         puzzle: {
           enabled: Boolean(options.puzzleMode),
           expected: puzzleMoves.length,
@@ -5762,6 +5768,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
           complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length
         }
       };
+      undoButton.disabled = history.length === 0;
       componentApi.setStateValue("state", state);
       componentApi.setTriggerValue("updated", state);
     };
@@ -5772,7 +5779,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       if (!options.puzzleMode || puzzleDeviated || !expectedMove || game.turn() === playerTurn) return false;
       if (!applyMove(expectedMove, "puzzle")) return false;
       puzzleIndex += 1;
-      setStatus(`Your move (${playerColor})`);
+      setStatus(`Puzzle opponent played ${gameSteps[gameSteps.length - 1].san}. Your move (${playerColor})`);
       publishState();
       return true;
     };
@@ -5786,8 +5793,17 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       publishState();
     };
     const applyMove = (uci, actor) => {
+      const snapshot = {
+        fen: game.fen(),
+        steps: [...gameSteps],
+        puzzleIndex,
+        puzzleDeviated,
+        enginePlan: [...enginePlan],
+        evaluation: { ...evaluation }
+      };
       try {
         const move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
+        history.push(snapshot);
         gameSteps.push({ ply: gameSteps.length + 1, move: uci, san: move.san, actor });
         board.setPosition(game.fen());
         return true;
@@ -5815,7 +5831,8 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         const move = message.split(" ")[1];
         if (move && move !== "(none)" && engineCanMove() && applyMove(move, puzzleDeviated ? "stockfish" : "puzzle")) {
           if (options.puzzleMode && !puzzleDeviated) puzzleIndex += 1;
-          setStatus(game.isGameOver() ? "Game over" : `Your move (${playerColor})`);
+          const lastStep = gameSteps[gameSteps.length - 1];
+          setStatus(game.isGameOver() ? "Game over" : `${lastStep.actor === "stockfish" ? "Stockfish takeover" : "Puzzle opponent"}: ${lastStep.san}. Your move (${playerColor})`);
         }
         publishState();
       }
@@ -5839,16 +5856,33 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         return;
       }
       if (!puzzleDeviated && expectedMove) puzzleIndex += 1;
-      setStatus(game.isGameOver() ? "Game over" : `Move accepted (${colorName(game.turn())} to move)`);
+      setStatus(game.isGameOver() ? "Game over" : puzzleDeviated ? "Stockfish takeover active" : `Move accepted (${colorName(game.turn())} to move)`);
       publishState();
       requestAnalysis();
     };
+    const undoLastMove = () => {
+      const snapshot = history.pop();
+      if (!snapshot) return;
+      sendEngine("stop");
+      engineThinking = false;
+      game = new Chess(snapshot.fen);
+      gameSteps.splice(0, gameSteps.length, ...snapshot.steps);
+      puzzleIndex = snapshot.puzzleIndex;
+      puzzleDeviated = snapshot.puzzleDeviated;
+      enginePlan = snapshot.enginePlan;
+      evaluation = snapshot.evaluation;
+      board.setPosition(game.fen());
+      setStatus("Took back one ply");
+      publishState();
+    };
     board.addEventListener("drop", handleDrop);
+    undoButton.addEventListener("click", undoLastMove);
     setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
     if (options.enginePolicy) engine = createEngine(handleEngineMessage);
     publishState();
     return () => {
       board.removeEventListener("drop", handleDrop);
+      undoButton.removeEventListener("click", undoLastMove);
       engine?.terminate();
       wrapper.remove();
     };

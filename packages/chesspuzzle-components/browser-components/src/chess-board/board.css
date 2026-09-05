@@ -17,3 +17,18 @@ chess-board {
   color: #263238;
   font: 600 0.9rem/1.5 sans-serif;
 }
+
+.chess-board-undo {
+  width: fit-content;
+  border: 1px solid #8d6e63;
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem;
+  background: #fffaf2;
+  color: #4e342e;
+  cursor: pointer;
+}
+
+.chess-board-undo:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
