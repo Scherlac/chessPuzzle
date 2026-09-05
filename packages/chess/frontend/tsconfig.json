@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["../../../src/chesspuzzle/components/frontend/packages/**/*.ts"]
+  "include": ["packages/**/*.ts"]
 }
