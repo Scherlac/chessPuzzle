@@ -1,6 +1,9 @@
+import { createChessBoard } from "./chess-board/index";
+
 export type BrowserComponent = (target: HTMLElement, props?: unknown) => unknown;
 
 const components: Record<string, BrowserComponent> = {
+  "chess-board": createChessBoard,
   status: (target, props) => {
     target.textContent = JSON.stringify(props ?? { ready: true });
   },

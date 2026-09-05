@@ -5,7 +5,7 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "build": "npm run build:browser-components",
-    "build:browser-components": "esbuild packages/browser-components/src/index.ts --bundle --format=iife --platform=browser --outfile=../src/chess_components/assets/browser-components.js",
+    "build:browser-components": "esbuild packages/browser-components/src/index.ts --bundle --format=iife --platform=browser --loader:.html=text --loader:.css=text --outfile=../src/chess_components/assets/browser-components.js",
     "build:python": "cd .. && uv run --with build python -m build --wheel --outdir dist",
     "package": "npm run build && npm run build:python",
     "clean": "node -e \"require('fs').rmSync('packages/browser-components/dist', { recursive: true, force: true })\"",
