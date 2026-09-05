@@ -5702,7 +5702,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
 `;
 
   // src/chess-board/board.css
-  var board_default = ".chess-board-wrapper {\r\n  display: grid;\r\n  gap: 0.75rem;\r\n  width: min(80vw, 520px);\r\n}\r\n\r\nchess-board {\r\n  --light-color: #f0d9b5;\r\n  --dark-color: #b58863;\r\n  --highlight-color: #e76f51;\r\n  display: block;\r\n  width: 100%;\r\n}\r\n\r\n.chess-board-status {\r\n  min-height: 1.5rem;\r\n  color: #263238;\r\n  font: 600 0.9rem/1.5 sans-serif;\r\n}\r\n\r\n.chess-board-undo {\r\n  width: fit-content;\r\n  border: 1px solid #8d6e63;\r\n  border-radius: 4px;\r\n  padding: 0.4rem 0.7rem;\r\n  background: #fffaf2;\r\n  color: #4e342e;\r\n  cursor: pointer;\r\n}\r\n\r\n.chess-board-undo:disabled {\r\n  cursor: not-allowed;\r\n  opacity: 0.5;\r\n}";
+  var board_default = ".chess-board-wrapper {\r\n  display: grid;\r\n  gap: 0.75rem;\r\n  width: min(80vw, 520px);\r\n}\r\n\r\nchess-board {\r\n  --light-color: #f0d9b5;\r\n  --dark-color: #b58863;\r\n  --highlight-color: #e76f51;\r\n  display: block;\r\n  width: 100%;\r\n}\r\n\r\n.chess-board-status {\r\n  min-height: 1.5rem;\r\n  color: #263238;\r\n  font: 600 0.9rem/1.5 sans-serif;\r\n}\r\n\r\n.chess-board-undo {\r\n  width: fit-content;\r\n  border: 1px solid #8d6e63;\r\n  border-radius: 4px;\r\n  padding: 0.4rem 0.7rem;\r\n  background: #fffaf2;\r\n  color: #4e342e;\r\n  cursor: pointer;\r\n}\r\n\r\n.chess-board-undo:disabled {\r\n  cursor: not-allowed;\r\n  opacity: 0.5;\r\n}\r\n\r\n.chess-board-promotion {\r\n  border: 1px solid #8d6e63;\r\n  border-radius: 6px;\r\n  padding: 1rem;\r\n  color: #263238;\r\n  background: #fffaf2;\r\n}\r\n\r\n.chess-board-promotion::backdrop {\r\n  background: rgb(0 0 0 / 35%);\r\n}\r\n\r\n.chess-board-promotion p {\r\n  margin: 0 0 0.75rem;\r\n  font: 600 0.95rem/1.2 sans-serif;\r\n}\r\n\r\n.chess-board-promotion-options {\r\n  display: grid;\r\n  grid-template-columns: repeat(2, minmax(0, 1fr));\r\n  gap: 0.5rem;\r\n}\r\n\r\n.chess-board-promotion-options button {\r\n  border: 1px solid #8d6e63;\r\n  border-radius: 4px;\r\n  padding: 0.45rem 0.7rem;\r\n  background: #f0d9b5;\r\n  color: #263238;\r\n  cursor: pointer;\r\n}";
 
   // src/chess-board/index.ts
   function createEngine(onMessage) {
@@ -5734,9 +5734,21 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     undoButton.type = "button";
     undoButton.className = "chess-board-undo";
     undoButton.textContent = "Take back one turn";
+    const promotionDialog = document.createElement("dialog");
+    promotionDialog.className = "chess-board-promotion";
+    promotionDialog.innerHTML = `
+    <form method="dialog">
+      <p>Choose promotion</p>
+      <div class="chess-board-promotion-options">
+        <button type="submit" value="q">Queen</button>
+        <button type="submit" value="r">Rook</button>
+        <button type="submit" value="b">Bishop</button>
+        <button type="submit" value="n">Knight</button>
+      </div>
+    </form>`;
     board.draggablePieces = true;
     board.orientation = options.orientation ?? playerColor;
-    wrapper.append(board, status, undoButton);
+    wrapper.append(board, status, undoButton, promotionDialog);
     board.setPosition(game.fen(), false);
     const style = document.createElement("style");
     style.textContent = board_default;
@@ -5753,6 +5765,33 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     const setStatus = (message) => {
       status.textContent = message;
     };
+    const logBoardState = (label, details = {}) => {
+      console.log("[chess-board]", label, {
+        ...details,
+        gameFen: game.fen(),
+        boardFen: board.fen(),
+        puzzleIndex,
+        stepCount: gameSteps.length
+      });
+    };
+    const refreshBoardAfterEvent = (fen, label) => {
+      board.setPosition(fen, false);
+      window.setTimeout(() => {
+        board.setPosition(fen, false);
+        logBoardState(label, { expectedFen: fen });
+      }, 0);
+    };
+    board.addEventListener("change", (event) => {
+      const detail = event.detail;
+      logBoardState("board change", {
+        eventFen: board.fen(),
+        eventValue: detail?.value,
+        eventOldValue: detail?.oldValue
+      });
+    });
+    board.addEventListener("snap-end", (event) => {
+      logBoardState("board snap-end", { detail: event.detail });
+    });
     const publishState = () => {
       const state = {
         fen: game.fen(),
@@ -5804,12 +5843,15 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         evaluation: { ...evaluation }
       };
       try {
+        logBoardState("before move", { actor, uci });
         const move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
         history.push(snapshot);
         gameSteps.push({ ply: gameSteps.length + 1, move: uci, san: move.san, actor });
-        board.setPosition(game.fen());
+        refreshBoardAfterEvent(game.fen(), "deferred board refresh");
+        logBoardState("after move", { actor, uci, san: move.san, captured: move.captured ?? null });
         return true;
-      } catch {
+      } catch (error) {
+        logBoardState("move failed", { actor, uci, error: String(error) });
         return false;
       }
     };
@@ -5819,9 +5861,11 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
         gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });
         puzzleIndex = 1;
-        board.setPosition(game.fen());
+        refreshBoardAfterEvent(game.fen(), "deferred setup refresh");
+        logBoardState("after setup move", { uci: setupMove, san: move.san });
       } catch {
         setStatus("Puzzle setup move is invalid");
+        logBoardState("setup move failed", { uci: setupMove });
       }
     }
     const handleEngineMessage = (message) => {
@@ -5842,28 +5886,56 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       } else if (message.startsWith("bestmove ")) {
         engineThinking = false;
         const move = message.split(" ")[1];
-        if (move && move !== "(none)" && engineCanMove() && applyMove(move, puzzleDeviated ? "stockfish" : "puzzle")) {
-          if (options.puzzleMode && !puzzleDeviated) puzzleIndex += 1;
+        const isPuzzleMove = options.puzzleMode === true && !puzzleDeviated && puzzleIndex < puzzleMoves.length;
+        if (move && move !== "(none)" && engineCanMove() && applyMove(move, isPuzzleMove ? "puzzle" : "stockfish")) {
+          if (isPuzzleMove) puzzleIndex += 1;
           const lastStep = gameSteps[gameSteps.length - 1];
           setStatus(game.isGameOver() ? "Game over" : `${lastStep.actor === "stockfish" ? "Stockfish takeover" : "Puzzle opponent"}: ${lastStep.san}. Your move (${playerColor})`);
+        } else if (options.puzzleMode && !puzzleDeviated && puzzleIndex >= puzzleMoves.length) {
+          setStatus(game.isGameOver() ? "Game over" : "Puzzle complete. Stockfish evaluation ready");
         }
         publishState();
       }
     };
     const handleDrop = (event) => {
-      const { source, target: destination, setAction } = event.detail;
+      const drop = event.detail;
+      const { source, target: destination, setAction } = drop;
+      logBoardState("drop received", {
+        source,
+        destination,
+        draggedPiece: drop.piece,
+        dropNewPosition: drop.newPosition,
+        dropOldPosition: drop.oldPosition
+      });
       if (game.turn() !== playerTurn || engineThinking) {
         setAction("snapback");
         return;
       }
       const expectedMove = puzzleMoves[puzzleIndex];
-      const attempted = `${source}${destination}q`;
+      const piece = game.get(source);
+      if (piece?.type === "p" && (destination[1] === "1" || destination[1] === "8")) {
+        setAction("snapback");
+        promotionDialog.addEventListener("close", () => {
+          const choice = promotionDialog.returnValue;
+          if (!choice) {
+            setStatus("Promotion cancelled");
+            publishState();
+            return;
+          }
+          handlePlayerMove(`${source}${destination}${choice}`, expectedMove);
+        }, { once: true });
+        promotionDialog.showModal();
+        return;
+      }
+      handlePlayerMove(`${source}${destination}`, expectedMove, setAction);
+    };
+    const handlePlayerMove = (attempted, expectedMove, setAction) => {
       if (options.puzzleMode && !puzzleDeviated && expectedMove && attempted.slice(0, 4) !== expectedMove.slice(0, 4)) {
         puzzleDeviated = true;
         setStatus("Puzzle line missed; Stockfish has taken over");
       }
       if (!applyMove(attempted, "player")) {
-        setAction("snapback");
+        setAction?.("snapback");
         setStatus("That move is not legal");
         publishState();
         return;
@@ -5871,6 +5943,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       if (!puzzleDeviated && expectedMove) puzzleIndex += 1;
       setStatus(game.isGameOver() ? "Game over" : puzzleDeviated ? "Stockfish takeover active" : `Move accepted (${colorName(game.turn())} to move)`);
       publishState();
+      queueMicrotask(() => logBoardState("after drop handler microtask", { expectedFen: game.fen() }));
       requestAnalysis();
     };
     const undoLastTurn = () => {
@@ -5885,7 +5958,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
       puzzleDeviated = snapshot.puzzleDeviated;
       enginePlan = snapshot.enginePlan;
       evaluation = snapshot.evaluation;
-      board.setPosition(game.fen());
+      board.setPosition(game.fen(), false);
       setStatus("Took back one turn for both players");
       publishState();
     };

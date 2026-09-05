@@ -3,6 +3,7 @@ export default function (component) {
   const name = data?.component_name;
 
   let cleanup;
+  let target;
   let retryTimer;
   let attempts = 0;
 
@@ -26,9 +27,19 @@ export default function (component) {
       return;
     }
 
-    const target = document.createElement("div");
+    const previousTarget = parentElement.querySelector("[data-chesspuzzle-checker-target]");
+    if (previousTarget) {
+      if (typeof previousTarget.__chesspuzzleCleanup === "function") {
+        previousTarget.__chesspuzzleCleanup();
+      }
+      previousTarget.remove();
+    }
+
+    target = document.createElement("div");
+    target.dataset.chesspuzzleCheckerTarget = "true";
     parentElement.appendChild(target);
     cleanup = registry[name](target, data?.props, { setStateValue, setTriggerValue });
+    target.__chesspuzzleCleanup = cleanup;
     const result = { component_name: name, loaded: true, bridged: true };
     setStateValue("result", result);
     setTriggerValue("result", result);
@@ -39,6 +50,6 @@ export default function (component) {
   return () => {
     window.clearTimeout(retryTimer);
     if (typeof cleanup === "function") cleanup();
-    target.remove();
+    target?.remove();
   };
 }

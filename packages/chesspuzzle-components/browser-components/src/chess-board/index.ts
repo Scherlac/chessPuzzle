@@ -19,9 +19,17 @@ type ComponentBridge = {
 type BoardElement = HTMLElement & {
   draggablePieces: boolean;
   orientation: "white" | "black";
+  fen(): string;
   setPosition(position: string, useAnimation?: boolean): void;
 };
-type DropEvent = CustomEvent<{ source: string; target: string; setAction(action: "snapback" | "trash"): void }>;
+type DropEvent = CustomEvent<{
+  source: string;
+  target: string;
+  piece: string;
+  newPosition: Record<string, string>;
+  oldPosition: Record<string, string>;
+  setAction(action: "snapback" | "trash"): void;
+}>;
 type GameStep = { ply: number; move: string; san: string; actor: "player" | "stockfish" | "puzzle" };
 type Evaluation = { score: number | null; mate: number | null; depth: number | null };
 type Snapshot = {
@@ -76,9 +84,21 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   undoButton.type = "button";
   undoButton.className = "chess-board-undo";
   undoButton.textContent = "Take back one turn";
+  const promotionDialog = document.createElement("dialog");
+  promotionDialog.className = "chess-board-promotion";
+  promotionDialog.innerHTML = `
+    <form method="dialog">
+      <p>Choose promotion</p>
+      <div class="chess-board-promotion-options">
+        <button type="submit" value="q">Queen</button>
+        <button type="submit" value="r">Rook</button>
+        <button type="submit" value="b">Bishop</button>
+        <button type="submit" value="n">Knight</button>
+      </div>
+    </form>`;
   board.draggablePieces = true;
   board.orientation = options.orientation ?? playerColor;
-  wrapper.append(board, status, undoButton);
+  wrapper.append(board, status, undoButton, promotionDialog);
   board.setPosition(game.fen(), false);
   const style = document.createElement("style");
   style.textContent = styles;
@@ -95,6 +115,33 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   const history: Snapshot[] = [];
 
   const setStatus = (message: string) => { status.textContent = message; };
+  const logBoardState = (label: string, details: Record<string, unknown> = {}) => {
+    console.log("[chess-board]", label, {
+      ...details,
+      gameFen: game.fen(),
+      boardFen: board.fen(),
+      puzzleIndex,
+      stepCount: gameSteps.length,
+    });
+  };
+  const refreshBoardAfterEvent = (fen: string, label: string) => {
+    board.setPosition(fen, false);
+    window.setTimeout(() => {
+      board.setPosition(fen, false);
+      logBoardState(label, { expectedFen: fen });
+    }, 0);
+  };
+  board.addEventListener("change", (event) => {
+    const detail = (event as CustomEvent<{ value: Record<string, string>; oldValue: Record<string, string> }>).detail;
+    logBoardState("board change", {
+      eventFen: board.fen(),
+      eventValue: detail?.value,
+      eventOldValue: detail?.oldValue,
+    });
+  });
+  board.addEventListener("snap-end", (event) => {
+    logBoardState("board snap-end", { detail: (event as CustomEvent).detail });
+  });
   const publishState = () => {
     const state: ComponentState = {
       fen: game.fen(), turn: colorName(game.turn()), status: status.textContent ?? "",
@@ -137,12 +184,17 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       enginePlan: [...enginePlan], evaluation: { ...evaluation },
     };
     try {
+      logBoardState("before move", { actor, uci });
       const move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
       history.push(snapshot);
       gameSteps.push({ ply: gameSteps.length + 1, move: uci, san: move.san, actor });
-      board.setPosition(game.fen());
+      refreshBoardAfterEvent(game.fen(), "deferred board refresh");
+      logBoardState("after move", { actor, uci, san: move.san, captured: move.captured ?? null });
       return true;
-    } catch { return false; }
+    } catch (error) {
+      logBoardState("move failed", { actor, uci, error: String(error) });
+      return false;
+    }
   };
   if (hasSetupMove) {
     const setupMove = puzzleMoves[0];
@@ -150,9 +202,11 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
       gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });
       puzzleIndex = 1;
-      board.setPosition(game.fen());
+      refreshBoardAfterEvent(game.fen(), "deferred setup refresh");
+      logBoardState("after setup move", { uci: setupMove, san: move.san });
     } catch {
       setStatus("Puzzle setup move is invalid");
+      logBoardState("setup move failed", { uci: setupMove });
     }
   }
   const handleEngineMessage = (message: string) => {
@@ -173,29 +227,63 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
     } else if (message.startsWith("bestmove ")) {
       engineThinking = false;
       const move = message.split(" ")[1];
-      if (move && move !== "(none)" && engineCanMove() && applyMove(move, puzzleDeviated ? "stockfish" : "puzzle")) {
-        if (options.puzzleMode && !puzzleDeviated) puzzleIndex += 1;
+      const isPuzzleMove = options.puzzleMode === true && !puzzleDeviated && puzzleIndex < puzzleMoves.length;
+      if (move && move !== "(none)" && engineCanMove() && applyMove(move, isPuzzleMove ? "puzzle" : "stockfish")) {
+        if (isPuzzleMove) puzzleIndex += 1;
         const lastStep = gameSteps[gameSteps.length - 1];
         setStatus(game.isGameOver() ? "Game over" : `${lastStep.actor === "stockfish" ? "Stockfish takeover" : "Puzzle opponent"}: ${lastStep.san}. Your move (${playerColor})`);
+      } else if (options.puzzleMode && !puzzleDeviated && puzzleIndex >= puzzleMoves.length) {
+        setStatus(game.isGameOver() ? "Game over" : "Puzzle complete. Stockfish evaluation ready");
       }
       publishState();
     }
   };
   const handleDrop = (event: Event) => {
-    const { source, target: destination, setAction } = (event as DropEvent).detail;
+    const drop = (event as DropEvent).detail;
+    const { source, target: destination, setAction } = drop;
+    logBoardState("drop received", {
+      source,
+      destination,
+      draggedPiece: drop.piece,
+      dropNewPosition: drop.newPosition,
+      dropOldPosition: drop.oldPosition,
+    });
     if (game.turn() !== playerTurn || engineThinking) { setAction("snapback"); return; }
     const expectedMove = puzzleMoves[puzzleIndex];
-    const attempted = `${source}${destination}q`;
+    const piece = game.get(source as Parameters<typeof game.get>[0]);
+    if (piece?.type === "p" && (destination[1] === "1" || destination[1] === "8")) {
+      setAction("snapback");
+      promotionDialog.addEventListener("close", () => {
+        const choice = promotionDialog.returnValue;
+        if (!choice) {
+          setStatus("Promotion cancelled");
+          publishState();
+          return;
+        }
+        handlePlayerMove(`${source}${destination}${choice}`, expectedMove);
+      }, { once: true });
+      promotionDialog.showModal();
+      return;
+    }
+    handlePlayerMove(`${source}${destination}`, expectedMove, setAction);
+  };
+
+  const handlePlayerMove = (
+    attempted: string,
+    expectedMove: string | undefined,
+    setAction?: (action: "snapback" | "trash") => void,
+  ) => {
     if (options.puzzleMode && !puzzleDeviated && expectedMove && attempted.slice(0, 4) !== expectedMove.slice(0, 4)) {
       puzzleDeviated = true;
       setStatus("Puzzle line missed; Stockfish has taken over");
     }
     if (!applyMove(attempted, "player")) {
-      setAction("snapback"); setStatus("That move is not legal"); publishState(); return;
+      setAction?.("snapback"); setStatus("That move is not legal"); publishState(); return;
     }
     if (!puzzleDeviated && expectedMove) puzzleIndex += 1;
     setStatus(game.isGameOver() ? "Game over" : puzzleDeviated ? "Stockfish takeover active" : `Move accepted (${colorName(game.turn())} to move)`);
     publishState();
+    queueMicrotask(() => logBoardState("after drop handler microtask", { expectedFen: game.fen() }));
     requestAnalysis();
   };
 
@@ -211,7 +299,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
     puzzleDeviated = snapshot.puzzleDeviated;
     enginePlan = snapshot.enginePlan;
     evaluation = snapshot.evaluation;
-    board.setPosition(game.fen());
+    board.setPosition(game.fen(), false);
     setStatus("Took back one turn for both players");
     publishState();
   };
