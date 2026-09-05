@@ -2,4 +2,4 @@ data/lichess_db_puzzle.csv.zst
 .venv/
 __pycache__/
 *.egg-info/
-frontend/node_modules/
+node_modules/
