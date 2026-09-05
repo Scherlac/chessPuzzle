@@ -28,7 +28,7 @@ export default function (component) {
 
     const target = document.createElement("div");
     parentElement.appendChild(target);
-    cleanup = registry[name](target, data?.props);
+    cleanup = registry[name](target, data?.props, { setStateValue, setTriggerValue });
     const result = { component_name: name, loaded: true, bridged: true };
     setStateValue("result", result);
     setTriggerValue("result", result);
@@ -39,5 +39,6 @@ export default function (component) {
   return () => {
     window.clearTimeout(retryTimer);
     if (typeof cleanup === "function") cleanup();
+    target.remove();
   };
 }

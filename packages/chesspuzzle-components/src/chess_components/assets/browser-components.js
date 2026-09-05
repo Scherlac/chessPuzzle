@@ -5712,9 +5712,16 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     worker.postMessage("uci");
     return worker;
   }
-  function createChessBoard(target, props) {
+  function colorName(color) {
+    return color === "w" ? "white" : "black";
+  }
+  function createChessBoard(target, props, bridge) {
     const options = props ?? {};
     const game = new Chess(options.fen);
+    const playerColor = options.playAs ?? "white";
+    const playerTurn = playerColor === "white" ? "w" : "b";
+    const puzzleMoves = options.puzzleMoves ?? [];
+    const componentApi = bridge ?? { setStateValue: () => void 0, setTriggerValue: () => void 0 };
     const wrapper = document.createElement("div");
     wrapper.className = "chess-board-wrapper";
     const board = document.createElement("chess-board");
@@ -5722,58 +5729,124 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     status.className = "chess-board-status";
     status.setAttribute("aria-live", "polite");
     board.draggablePieces = true;
-    board.orientation = options.orientation ?? "white";
+    board.orientation = options.orientation ?? playerColor;
     wrapper.append(board, status);
     board.setPosition(game.fen(), false);
     const style = document.createElement("style");
     style.textContent = board_default;
     target.append(style, wrapper);
-    const playerColor = options.playAs ?? "white";
-    const playerTurn = playerColor === "white" ? "w" : "b";
     let engine;
     let engineReady = false;
-    const updateStatus = (message) => {
+    let engineThinking = false;
+    let puzzleIndex = 0;
+    let puzzleDeviated = false;
+    let enginePlan = [];
+    let evaluation = { score: null, mate: null, depth: null };
+    const gameSteps = [];
+    const setStatus = (message) => {
       status.textContent = message;
     };
-    updateStatus(options.engine ? `Your move (${playerColor})` : "Ready to play");
-    const askEngineToMove = () => {
-      if (!engine || !engineReady || game.isGameOver()) return;
-      engine.postMessage(`position fen ${game.fen()}`);
-      engine.postMessage("go depth 12");
-      updateStatus("Stockfish is thinking...");
+    const publishState = () => {
+      const state = {
+        fen: game.fen(),
+        turn: colorName(game.turn()),
+        status: status.textContent ?? "",
+        gameSteps: [...gameSteps],
+        enginePlan: [...enginePlan],
+        evaluation: { ...evaluation },
+        puzzle: {
+          enabled: Boolean(options.puzzleMode),
+          expected: puzzleMoves.length,
+          completed: puzzleIndex,
+          deviated: puzzleDeviated,
+          complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length
+        }
+      };
+      componentApi.setStateValue("state", state);
+      componentApi.setTriggerValue("updated", state);
+    };
+    const sendEngine = (command) => engine?.postMessage(command);
+    const engineCanMove = () => (options.enginePolicy === "play" || puzzleDeviated) && game.turn() !== playerTurn && !game.isGameOver();
+    const followPuzzleMove = () => {
+      const expectedMove = puzzleMoves[puzzleIndex];
+      if (!options.puzzleMode || puzzleDeviated || !expectedMove || game.turn() === playerTurn) return false;
+      if (!applyMove(expectedMove, "puzzle")) return false;
+      puzzleIndex += 1;
+      setStatus(`Your move (${playerColor})`);
+      publishState();
+      return true;
+    };
+    const requestAnalysis = () => {
+      if (!engine || !engineReady || engineThinking || game.isGameOver()) return;
+      if (followPuzzleMove()) return;
+      engineThinking = true;
+      sendEngine(`position fen ${game.fen()}`);
+      sendEngine(`go depth ${Math.max(6, Math.min(20, Number(options.engineLevel ?? 10)))}`);
+      setStatus(engineCanMove() ? "Stockfish is thinking..." : "Stockfish is evaluating...");
+      publishState();
+    };
+    const applyMove = (uci, actor) => {
+      try {
+        const move = game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
+        gameSteps.push({ ply: gameSteps.length + 1, move: uci, san: move.san, actor });
+        board.setPosition(game.fen());
+        return true;
+      } catch {
+        return false;
+      }
     };
     const handleEngineMessage = (message) => {
       if (message === "uciok") {
-        engine?.postMessage("isready");
+        sendEngine(`setoption name Skill Level value ${Math.max(0, Math.min(20, Number(options.engineLevel ?? 10)))}`);
+        sendEngine("isready");
       } else if (message === "readyok") {
         engineReady = true;
-        if (game.turn() !== playerTurn) askEngineToMove();
+        requestAnalysis();
+      } else if (message.startsWith("info ")) {
+        const score = message.match(/score cp (-?\d+)/)?.[1];
+        const mate = message.match(/score mate (-?\d+)/)?.[1];
+        const depth = message.match(/\bdepth (\d+)/)?.[1];
+        const pv = message.match(/\bpv (.+)$/)?.[1];
+        evaluation = { score: score ? Number(score) / 100 : evaluation.score, mate: mate ? Number(mate) : evaluation.mate, depth: depth ? Number(depth) : evaluation.depth };
+        if (pv) enginePlan = pv.split(" ");
+        publishState();
       } else if (message.startsWith("bestmove ")) {
+        engineThinking = false;
         const move = message.split(" ")[1];
-        if (move && move !== "(none)" && game.turn() !== playerTurn) {
-          game.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] });
-          board.setPosition(game.fen());
-          updateStatus(game.isGameOver() ? "Game over" : `Your move (${playerColor})`);
+        if (move && move !== "(none)" && engineCanMove() && applyMove(move, puzzleDeviated ? "stockfish" : "puzzle")) {
+          if (options.puzzleMode && !puzzleDeviated) puzzleIndex += 1;
+          setStatus(game.isGameOver() ? "Game over" : `Your move (${playerColor})`);
         }
+        publishState();
       }
     };
-    if (options.engine) engine = createEngine(handleEngineMessage);
     const handleDrop = (event) => {
       const { source, target: destination, setAction } = event.detail;
-      if (game.turn() !== playerTurn) {
+      if (game.turn() !== playerTurn || engineThinking) {
         setAction("snapback");
         return;
       }
-      try {
-        game.move({ from: source, to: destination, promotion: "q" });
-        updateStatus(game.isGameOver() ? "Game over" : `Your move (${game.turn() === "w" ? "white" : "black"})`);
-        if (options.engine) askEngineToMove();
-      } catch {
-        setAction("snapback");
-        updateStatus("That move is not legal");
+      const expectedMove = puzzleMoves[puzzleIndex];
+      const attempted = `${source}${destination}q`;
+      if (options.puzzleMode && !puzzleDeviated && expectedMove && attempted.slice(0, 4) !== expectedMove.slice(0, 4)) {
+        puzzleDeviated = true;
+        setStatus("Puzzle line missed; Stockfish has taken over");
       }
+      if (!applyMove(attempted, "player")) {
+        setAction("snapback");
+        setStatus("That move is not legal");
+        publishState();
+        return;
+      }
+      if (!puzzleDeviated && expectedMove) puzzleIndex += 1;
+      setStatus(game.isGameOver() ? "Game over" : `Move accepted (${colorName(game.turn())} to move)`);
+      publishState();
+      requestAnalysis();
     };
     board.addEventListener("drop", handleDrop);
+    setStatus(options.puzzleMode ? "Puzzle ready" : `Your move (${playerColor})`);
+    if (options.enginePolicy) engine = createEngine(handleEngineMessage);
+    publishState();
     return () => {
       board.removeEventListener("drop", handleDrop);
       engine?.terminate();

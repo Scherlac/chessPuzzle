@@ -1,6 +1,13 @@
 import { createChessBoard } from "./chess-board/index";
 
-export type BrowserComponent = (target: HTMLElement, props?: unknown) => unknown;
+export type BrowserComponent = (
+  target: HTMLElement,
+  props?: unknown,
+  bridge?: {
+    setStateValue: (name: string, value: unknown) => void;
+    setTriggerValue: (name: string, value: unknown) => void;
+  },
+) => unknown;
 
 const components: Record<string, BrowserComponent> = {
   "chess-board": createChessBoard,
