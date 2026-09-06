@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +27,7 @@ class PuzzleEvaluation:
 class Puzzle:
     puzzle_id: str
     fen: str
+    setup_move: str | None
     moves: tuple[str, ...]
     rating: int
     themes: tuple[str, ...]
@@ -50,7 +52,7 @@ def _phase(themes: tuple[str, ...], fen: str) -> str:
 
 def _objective(themes: tuple[str, ...]) -> str:
     theme_set = set(themes)
-    if any(theme.startswith("mate") or theme in {"checkmate", "mate"} for theme in theme_set):
+    if any(theme in {"checkmate", "mate"} or theme.startswith("mateIn") for theme in theme_set):
         return "mate"
     if theme_set & {"advantage", "crushing", "material", "winningQueen", "trappedPiece"}:
         return "gain"
@@ -72,15 +74,15 @@ def evaluate_puzzle(puzzle: Puzzle) -> PuzzleEvaluation:
     fields = puzzle.fen.split()
     start_side = "white" if len(fields) < 2 or fields[1] == "w" else "black"
     player_side = "black" if start_side == "white" else "white"
-    last_side = start_side if len(puzzle.moves) % 2 else player_side
+    last_side = player_side if len(puzzle.moves) % 2 else start_side
     themes = puzzle.themes
     objective = _objective(themes)
     return PuzzleEvaluation(
-        start_scenario="opponent_setup",
+        start_scenario="opponent_setup" if puzzle.setup_move else "position_as_given",
         start_side=start_side,
         player_side=player_side,
-        setup_move=puzzle.moves[0] if puzzle.moves else "",
-        step_count=max(0, len(puzzle.moves) - 1),
+        setup_move=puzzle.setup_move or "",
+        step_count=len(puzzle.moves),
         finish_situation=_finish_situation(themes, objective),
         objective=objective,
         phase=_phase(themes, puzzle.fen),
@@ -90,6 +92,29 @@ def evaluate_puzzle(puzzle: Puzzle) -> PuzzleEvaluation:
 
 def _dataset_path() -> Path:
     return Path(__file__).resolve().parents[4] / "data" / "lichess_db_puzzle.csv.zst"
+
+
+def _custom_dataset_path() -> Path:
+    return Path(__file__).resolve().parents[4] / "data" / "custom_puzzles.json"
+
+
+def _load_custom_puzzles() -> list[Puzzle]:
+    path = _custom_dataset_path()
+    if not path.exists():
+        return []
+    records = json.loads(path.read_text(encoding="utf-8"))
+    return [
+        Puzzle(
+            puzzle_id=record["puzzle_id"],
+            fen=record["fen"],
+            setup_move=record.get("setup_move"),
+            moves=tuple(record["moves"]),
+            rating=int(record["rating"]),
+            themes=tuple(record["themes"]),
+            game_url=record.get("game_url", ""),
+        )
+        for record in records
+    ]
 
 
 @lru_cache(maxsize=4)
@@ -103,7 +128,8 @@ def load_puzzles(limit: int = 100) -> tuple[Puzzle, ...]:
                 Puzzle(
                     puzzle_id=row["PuzzleId"],
                     fen=row["FEN"],
-                    moves=tuple(row["Moves"].split()),
+                    setup_move=(row["Moves"].split() or [None])[0],
+                    moves=tuple(row["Moves"].split()[1:]),
                     rating=int(row["Rating"]),
                     themes=tuple(row["Themes"].split()),
                     game_url=row["GameUrl"],
@@ -111,4 +137,5 @@ def load_puzzles(limit: int = 100) -> tuple[Puzzle, ...]:
             )
             if len(puzzles) >= limit:
                 break
+    puzzles.extend(_load_custom_puzzles())
     return tuple(puzzles)

@@ -157,7 +157,10 @@ with puzzle_tab:
             st.rerun()
 
         selected_puzzle = puzzles[puzzle_index]
-        puzzle_color = "white" if selected_puzzle.fen.split()[1] == "b" else "black"
+        fen_side = selected_puzzle.fen.split()[1]
+        puzzle_color = (
+            "white" if fen_side == "b" else "black"
+        ) if selected_puzzle.setup_move else ("white" if fen_side == "w" else "black")
         component_key = f"chess-board-puzzle-{selected_puzzle.puzzle_id}-{st.session_state['puzzle_reset_nonce']}"
         saved_state = component_saved_state(component_key)
         engine_policy = st.selectbox("Opponent", ["follow", "play"], format_func=lambda value: "Puzzle line" if value == "follow" else "Stockfish takeover", key="puzzle-opponent")
@@ -174,6 +177,7 @@ with puzzle_tab:
                 "enginePolicy": engine_policy,
                 "engineLevel": engine_level,
                 "puzzleMode": True,
+                "puzzleSetupMove": selected_puzzle.setup_move,
                 "puzzleMoves": selected_puzzle.moves,
                 "hintGoal": selected_puzzle.evaluation.objective,
                 "browserStorageKey": f"chesspuzzle:last-level:{selected_puzzle.puzzle_id}",

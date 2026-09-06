@@ -10,6 +10,7 @@ type BoardProps = {
   enginePolicy?: "follow" | "play";
   engineLevel?: number;
   puzzleMode?: boolean;
+  puzzleSetupMove?: string | null;
   puzzleMoves?: string[];
   hintGoal?: string;
   browserStorageKey?: string;
@@ -82,7 +83,8 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   const initialTurn = initialGame.turn();
   const playerColor = options.playAs ?? "white";
   const puzzleMoves = options.puzzleMoves ?? [];
-  const hasSetupMove = options.puzzleMode === true && puzzleMoves.length > 0;
+  const setupMove = options.puzzleMode === true ? options.puzzleSetupMove ?? null : null;
+  const hasSetupMove = Boolean(setupMove);
   const playerTurn = hasSetupMove
     ? initialTurn === "w" ? "b" : "w"
     : playerColor === "white" ? "w" : "b";
@@ -114,7 +116,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   let engineReady = false;
   let engineThinking = false;
   let puzzleIndex = savedState
-    ? hasSetupMove ? savedState.puzzle.completed + 1 : savedState.puzzle.completed
+    ? savedState.puzzle.completed
     : 0;
   let puzzleDeviated = savedState?.puzzle.deviated ?? false;
   let enginePlan: string[] = savedState?.enginePlan ? [...savedState.enginePlan] : [];
@@ -156,8 +158,8 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       fen: game.fen(), turn: colorName(game.turn()), status: currentStatus,
       gameSteps: [...gameSteps], enginePlan: [...enginePlan], evaluation: { ...evaluation }, history: [...history],
       canUndo: history.length > 0,
-      puzzle: { enabled: Boolean(options.puzzleMode), expected: hasSetupMove ? puzzleMoves.length - 1 : puzzleMoves.length,
-        completed: hasSetupMove ? Math.max(0, puzzleIndex - 1) : puzzleIndex,
+      puzzle: { enabled: Boolean(options.puzzleMode), expected: puzzleMoves.length,
+        completed: puzzleIndex,
         deviated: puzzleDeviated, complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length },
     };
     componentApi.setStateValue("state", state);
@@ -204,8 +206,7 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
       return false;
     }
   };
-  if (hasSetupMove && !savedState) {
-    const setupMove = puzzleMoves[0];
+  if (hasSetupMove && !savedState && setupMove) {
     try {
       const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
       gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });

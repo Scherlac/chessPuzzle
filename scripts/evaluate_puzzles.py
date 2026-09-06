@@ -17,7 +17,7 @@ def verify_with_stockfish(puzzles, depth: int, extra_plies: int) -> list[dict]:
 
     script = Path(__file__).with_name("verify_puzzles.mjs")
     payload = [
-        {"puzzle_id": puzzle.puzzle_id, "fen": puzzle.fen, "moves": puzzle.moves}
+        {"puzzle_id": puzzle.puzzle_id, "fen": puzzle.fen, "setup_move": puzzle.setup_move, "moves": puzzle.moves}
         for puzzle in puzzles
     ]
     result = subprocess.run(

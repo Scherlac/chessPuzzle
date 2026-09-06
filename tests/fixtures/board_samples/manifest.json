@@ -1,0 +1,122 @@
+[
+  {
+    "image": "concept-compact-white.png",
+    "puzzle_id": "concept",
+    "source_fen": "8/8/8/R7/8/8/Bpp1p3/1krbK3 b - - 0 1",
+    "setup_move": "b1a1",
+    "expected_fen": "8/8/8/R7/8/8/Bpp1p3/k1rbK3 w - - 1 2",
+    "width": 420,
+    "height": 500,
+    "orientation": "white",
+    "colors": [
+      "#f4e7c5",
+      "#7a5138",
+      "#d3543f"
+    ]
+  },
+  {
+    "image": "concept-wide-black.png",
+    "puzzle_id": "concept",
+    "source_fen": "8/8/8/R7/8/8/Bpp1p3/1krbK3 b - - 0 1",
+    "setup_move": "b1a1",
+    "expected_fen": "8/8/8/R7/8/8/Bpp1p3/k1rbK3 w - - 1 2",
+    "width": 900,
+    "height": 700,
+    "orientation": "black",
+    "colors": [
+      "#dbe8f2",
+      "#40647c",
+      "#e0a458"
+    ]
+  },
+  {
+    "image": "gain-compact-white.png",
+    "puzzle_id": "gain",
+    "source_fen": "4k3/8/8/8/8/8/4r3/3QK3 w - - 0 1",
+    "setup_move": null,
+    "expected_fen": "4k3/8/8/8/8/8/4r3/3QK3 w - - 0 1",
+    "width": 420,
+    "height": 500,
+    "orientation": "white",
+    "colors": [
+      "#e7f2e4",
+      "#47705c",
+      "#c44536"
+    ]
+  },
+  {
+    "image": "gain-wide-black.png",
+    "puzzle_id": "gain",
+    "source_fen": "4k3/8/8/8/8/8/4r3/3QK3 w - - 0 1",
+    "setup_move": null,
+    "expected_fen": "4k3/8/8/8/8/8/4r3/3QK3 w - - 0 1",
+    "width": 900,
+    "height": 700,
+    "orientation": "black",
+    "colors": [
+      "#f0e1ee",
+      "#765070",
+      "#2a9d8f"
+    ]
+  },
+  {
+    "image": "mate-compact-white.png",
+    "puzzle_id": "mate",
+    "source_fen": "7k/5Q2/7K/8/8/8/8/8 w - - 0 1",
+    "setup_move": null,
+    "expected_fen": "7k/5Q2/7K/8/8/8/8/8 w - - 0 1",
+    "width": 420,
+    "height": 500,
+    "orientation": "white",
+    "colors": [
+      "#f7e8cf",
+      "#8c5d3b",
+      "#b23a48"
+    ]
+  },
+  {
+    "image": "mate-wide-black.png",
+    "puzzle_id": "mate",
+    "source_fen": "7k/5Q2/7K/8/8/8/8/8 w - - 0 1",
+    "setup_move": null,
+    "expected_fen": "7k/5Q2/7K/8/8/8/8/8 w - - 0 1",
+    "width": 900,
+    "height": 700,
+    "orientation": "black",
+    "colors": [
+      "#e4edf4",
+      "#34526f",
+      "#f4a261"
+    ]
+  },
+  {
+    "image": "opening-dense-compact-white.png",
+    "puzzle_id": "opening",
+    "source_fen": "r1bqk2r/pppp1ppp/2n2n2/8/1b2P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 4 4",
+    "setup_move": null,
+    "expected_fen": "r1bqk2r/pppp1ppp/2n2n2/8/1b2P3/2N5/PPPP1PPP/R1BQKBNR w KQkq - 4 4",
+    "width": 420,
+    "height": 500,
+    "orientation": "white",
+    "colors": [
+      "#f1e6c8",
+      "#72513c",
+      "#d66b4d"
+    ]
+  },
+  {
+    "image": "middlegame-dense-wide-black.png",
+    "puzzle_id": "middlegame",
+    "source_fen": "r1bq1rk1/ppp2ppp/2n5/3pp3/3PP3/2P1BN2/PP3PPP/R2QKB1R w KQ - 0 8",
+    "setup_move": null,
+    "expected_fen": "r1bq1rk1/ppp2ppp/2n5/3pp3/3PP3/2P1BN2/PP3PPP/R2QKB1R w KQ - 0 8",
+    "width": 900,
+    "height": 700,
+    "orientation": "black",
+    "colors": [
+      "#dce9ef",
+      "#41677a",
+      "#e29b54"
+    ]
+  }
+]

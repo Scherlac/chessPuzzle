@@ -1,0 +1,2 @@
+# Store generated image fixtures as Git LFS objects.
+*.png filter=lfs diff=lfs merge=lfs -text

@@ -76,7 +76,7 @@ function apply(game, uci) {
 async function verifyPuzzle(puzzle, depth, extraPlies) {
   const game = new Chess(puzzle.fen);
   const declaredMoves = [...puzzle.moves];
-  const setupMove = declaredMoves.shift() ?? null;
+  const setupMove = puzzle.setup_move ?? null;
   if (setupMove) apply(game, setupMove);
   const checks = [];
   for (const move of declaredMoves) {
