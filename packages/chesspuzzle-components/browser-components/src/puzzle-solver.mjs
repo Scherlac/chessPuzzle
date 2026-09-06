@@ -72,6 +72,7 @@ export async function recognizePosition(imagePath, options = {}) {
     max_completion_tokens: options.maxCompletionTokens ?? 1000,
   };
   if (!model.startsWith("gpt-5")) request.temperature = 0;
+  options.trace && Object.assign(options.trace, { kind: "vision", model, request: { ...request, messages: request.messages.map((message) => ({ ...message, content: message.content.map((part) => part.type === "image_url" ? { type: "image_url", image_url: { url: `[base64 image: ${imagePath}]` } } : part) })) } });
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -80,6 +81,7 @@ export async function recognizePosition(imagePath, options = {}) {
   if (!response.ok) throw new Error(`Vision request failed: ${response.status} ${await response.text()}`);
   const payload = await response.json();
   const content = payload.choices?.[0]?.message?.content ?? "";
+  options.trace && Object.assign(options.trace, { response: content, responsePayload: { ...payload, choices: undefined } });
   let recognized;
   try {
     recognized = JSON.parse(content);

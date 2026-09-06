@@ -1,10 +1,13 @@
 from dataclasses import asdict
 import logging
+import tempfile
 from time import perf_counter
+from pathlib import Path
 
 import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
+from chesspuzzle.designer import capture_design, describe_puzzle, rank_solutions
 
 
 logger = logging.getLogger("chesspuzzle")
@@ -127,7 +130,7 @@ if not st.session_state["level_memory_loaded"]:
 st.session_state.setdefault("puzzle_reset_nonce", 0)
 st.session_state.setdefault("play_reset_nonce", 0)
 
-puzzle_tab, play_tab = st.tabs(["Puzzle", "Play"])
+puzzle_tab, play_tab, designer_tab = st.tabs(["Puzzle", "Play", "Puzzle designer"])
 with puzzle_tab:
     st.markdown('<h1 class="chess-page-heading">Chess - Puzzle</h1>', unsafe_allow_html=True)
     board_col, info_col = st.columns([1, 1], gap="large")
@@ -221,3 +224,76 @@ with play_tab:
         )
     with info_col:
         render_status(board_state)
+
+with designer_tab:
+    st.markdown('<h1 class="chess-page-heading">Chess - Puzzle designer</h1>', unsafe_allow_html=True)
+    st.caption("Start from a FEN or board image, rank candidate lines, then create a shareable puzzle description.")
+    source_col, preview_col = st.columns([1, 1], gap="large")
+    with source_col:
+        st.subheader("1. Starting position")
+        source_mode = st.radio("Position source", ["FEN", "Board image"], horizontal=True, key="designer-source-mode")
+        designer_fen = st.text_area("FEN", value=STANDARD_FEN, key="designer-fen") if source_mode == "FEN" else None
+        uploaded = st.file_uploader("Board image", type=["png", "jpg", "jpeg", "webp"], key="designer-image") if source_mode == "Board image" else None
+        side_to_move = st.selectbox("Side to move", ["w", "b"], format_func=lambda value: "White" if value == "w" else "Black", key="designer-side")
+        objective = st.selectbox("Objective", ["gain", "concept", "mate"], key="designer-objective")
+        winner = st.selectbox("Winner", ["White", "Black", "Draw"], key="designer-winner")
+        setup_move = st.text_input("Optional setup move (UCI)", key="designer-setup") or None
+        solve_clicked = st.button("Solve and rank lines", type="primary", key="designer-solve")
+        if solve_clicked:
+            if not designer_fen and not uploaded:
+                st.error("Provide a FEN or upload a board image.")
+            else:
+                try:
+                    image_path = None
+                    if uploaded:
+                        image_path = Path(tempfile.gettempdir()) / f"chesspuzzle-designer-{uploaded.name}"
+                        image_path.write_bytes(uploaded.getvalue())
+                    st.session_state["designer-result"] = rank_solutions(designer_fen, image_path=image_path, setup_move=setup_move, side_to_move=side_to_move)
+                    st.session_state["designer-fen-active"] = st.session_state["designer-result"]["startFen"]
+                except Exception as error:
+                    st.error(str(error))
+        result = st.session_state.get("designer-result")
+        if result:
+            candidates = result["line"][0]["candidates"] if result["line"] else []
+            def candidate_label(index: int, candidate: dict) -> str:
+                value = candidate["score"] if candidate["score"] is not None else f"mate {candidate['mate']}"
+                return f"{index + 1}. {candidate['pv'][0]} | {value}"
+
+            labels = [candidate_label(index, candidate) for index, candidate in enumerate(candidates)]
+            selected_index = st.selectbox("Favored solution", range(len(candidates)), format_func=lambda index: labels[index], key="designer-selected")
+            selected = candidates[selected_index]
+            st.json({"bestmove": selected["pv"][0], "principal_variation": selected["pv"], "objective": objective})
+    with preview_col:
+        st.subheader("2. Position pair")
+        active_fen = st.session_state.get("designer-fen-active", designer_fen or STANDARD_FEN)
+        selected_line = []
+        if st.session_state.get("designer-result"):
+            selected_index = st.session_state.get("designer-selected", 0)
+            selected_line = st.session_state["designer-result"]["line"][0]["candidates"][selected_index]["pv"]
+        start_key = f"designer-start-{st.session_state.get('designer-result', {}).get('startFen', 'empty')}"
+        render_board(key=start_key, fallback_state=None, props={"fen": active_fen, "orientation": "white", "playAs": "white", "puzzleMode": False, "puzzleMoves": selected_line})
+        final_fen = st.session_state.get("designer-result", {}).get("line", [{}])[-1].get("fen", active_fen)
+        st.caption("Starting position with the selected line")
+        render_board(key=f"designer-final-{final_fen}", fallback_state=None, props={"fen": final_fen, "orientation": "white", "playAs": "white", "puzzleMode": False})
+        st.caption("Final position")
+        if st.button("Create title and factual description", key="designer-describe"):
+            if not st.session_state.get("designer-result") or not selected_line:
+                st.error("Solve the position and select a solution first.")
+            else:
+                try:
+                    with tempfile.TemporaryDirectory() as temporary_directory:
+                        image_path = Path(temporary_directory) / "puzzle-design.png"
+                        capture_design(active_fen, selected_line, image_path, setup_move=setup_move)
+                        metadata = describe_puzzle(image_path, {
+                            "side_to_move": side_to_move,
+                            "objective": objective,
+                            "winner": winner,
+                            "line": selected_line,
+                        })
+                    st.session_state["designer-metadata"] = metadata
+                except Exception as error:
+                    st.error(str(error))
+        metadata = st.session_state.get("designer-metadata")
+        if metadata:
+            st.subheader(metadata.get("title", "Puzzle title"))
+            st.write(metadata.get("description", ""))

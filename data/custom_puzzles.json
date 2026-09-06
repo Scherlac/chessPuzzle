@@ -1,11 +1,11 @@
 [
   {
     "puzzle_id": "IMG-20260906-001",
-    "fen": "8/8/8/R7/8/8/Bpp1p3/1krbK3 b - - 0 1",
-    "setup_move": "b1a1",
-    "moves": ["a2c4", "a1b1", "c4a2", "b1a1", "a2b3", "a1b1"],
+    "fen": "8/8/8/R7/8/8/Bpp1p3/k1rbK3 w - - 0 1",
+    "setup_move": null,
+    "moves": ["a2b3", "a1b1", "b3a4", "b1a2", "a4c2"],
     "rating": 1400,
-    "themes": ["custom", "promotion", "endgame"],
+    "themes": ["custom", "mate", "checkmate"],
     "game_url": "",
     "source": "board image captured 2026-09-06"
   }

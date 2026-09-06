@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / "data" / "puzzle_test_cases.json"
+CUSTOM_CASES = ROOT / "data" / "custom_puzzles.json"
 SAMPLES = ROOT / "tests" / "fixtures" / "board_samples"
 
 
@@ -96,6 +97,22 @@ def test_solver_accepts_position_without_setup_move() -> None:
         '["d1e2"]',
     ).stdout)
     assert result["setupMove"] is None
+    assert result["line"][0]["expectedRank"] > 0
+
+
+def test_corrected_custom_puzzle_starts_with_white_and_no_setup_move() -> None:
+    puzzle = json.loads(CUSTOM_CASES.read_text(encoding="utf-8"))[0]
+    assert puzzle["setup_move"] is None
+    assert puzzle["fen"].split()[1] == "w"
+    result = json.loads(run_node(
+        "solve_puzzle.mjs",
+        puzzle["fen"],
+        "10",
+        str(len(puzzle["moves"])),
+        json.dumps(puzzle["moves"]),
+    ).stdout)
+    assert result["setupMove"] is None
+    assert result["line"][0]["expected"] == "a2b3"
     assert result["line"][0]["expectedRank"] > 0
 
 
