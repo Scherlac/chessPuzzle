@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import { Chess } from "../packages/chesspuzzle-components/browser-components/node_modules/chess.js/dist/esm/chess.js";
+import { recognizePosition } from "../packages/chesspuzzle-components/browser-components/src/puzzle-solver.mjs";
 
 const cases = JSON.parse(readFileSync(new URL("../data/puzzle_test_cases.json", import.meta.url), "utf8"));
 
@@ -47,46 +48,11 @@ function validateCase(puzzle) {
   };
 }
 
-function imageMime(path) {
-  return { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" }[extname(path).toLowerCase()] ?? "image/png";
-}
-
-async function recognize(path) {
-  const apiKey = process.env.LLM_API_KEY;
-  if (!apiKey) throw new Error("LLM_API_KEY is required for --llm");
-  const baseUrl = (process.env.LLM_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = process.env.VISION_MODEL ?? process.env.LLM_MODEL ?? "gpt-4o-mini";
-  const image = readFileSync(path).toString("base64");
-  const request = {
-    model,
-    response_format: { type: "json_object" },
-    messages: [{ role: "user", content: [
-      { type: "text", text: "Recognize this chess board square by square. Return only JSON with fields fen, orientation, confidence, and notes. Read the coordinate labels: orientation is white when rank 1 is at the bottom and files a through h run left to right; orientation is black when rank 8 is at the bottom and files h through a run left to right. The FEN must always use canonical chess order, regardless of visual orientation: rank 8 is the first FEN row, rank 1 is the last FEN row, and each row runs from file a to file h. Never return rows in screenshot order. Verify every occupied and empty square before producing the FEN board-placement field. If the image cannot establish side to move or counters, return the board-placement field only; never invent pieces. Do not solve the position." },
-      { type: "image_url", image_url: { url: `data:${imageMime(path)};base64,${image}` } },
-    ] }],
-    max_completion_tokens: 1000,
-  };
-  if (!model.startsWith("gpt-5")) request.temperature = 0;
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!response.ok) throw new Error(`vision request failed: ${response.status} ${await response.text()}`);
-  const payload = await response.json();
-  const content = payload.choices?.[0]?.message?.content ?? "";
-  try {
-    return JSON.parse(content);
-  } catch (error) {
-    throw new Error(`vision model returned invalid JSON: ${error.message}`);
-  }
-}
-
 async function recognizeWithRetry(path, attempts = 3) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return await recognize(path);
+      return await recognizePosition(path);
     } catch (error) {
       lastError = error;
     }

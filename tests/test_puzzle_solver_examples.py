@@ -99,6 +99,18 @@ def test_solver_accepts_position_without_setup_move() -> None:
     assert result["line"][0]["expectedRank"] > 0
 
 
+def test_solver_cli_delegates_to_component_api() -> None:
+    source = (ROOT / "scripts" / "solve_puzzle.mjs").read_text(encoding="utf-8")
+    assert 'from "../packages/chesspuzzle-components/browser-components/src/puzzle-solver.mjs"' in source
+    assert "solvePosition" in source
+
+
+def test_image_validator_uses_component_recognition_api() -> None:
+    source = (ROOT / "scripts" / "validate_puzzle_examples.mjs").read_text(encoding="utf-8")
+    assert 'from "../packages/chesspuzzle-components/browser-components/src/puzzle-solver.mjs"' in source
+    assert "recognizePosition" in source
+
+
 def test_solver_validates_all_fixture_objectives() -> None:
     cases = json.loads(CASES.read_text(encoding="utf-8"))
     assert {case["expected_objective"] for case in cases} >= {"concept", "gain", "mate"}
