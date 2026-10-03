@@ -59,6 +59,8 @@ def rank_solutions(
     depth: int = 25,
     plies: int = 6,
     per_outcome: int = 2,
+    explore_depths: list[int] | None = None,
+    explore_candidates: int = 20,
 ) -> dict:
     node = shutil.which("node") or shutil.which("node.exe")
     if node is None:
@@ -82,7 +84,33 @@ def rank_solutions(
     parsed = json.loads(result.stdout)
     first_position = parsed.get("line", [{}])[0] if parsed.get("line") else {}
     parsed["candidate_classification"] = classify_candidates(parsed["startFen"], first_position.get("candidates", []), per_outcome)
+    parsed["explorations"] = []
+    for exploratory_depth in explore_depths or []:
+        exploratory = rank_solutions(
+            parsed["startFen"],
+            setup_move=parsed.get("setupMove"),
+            side_to_move=side_to_move,
+            depth=exploratory_depth,
+            plies=plies,
+            per_outcome=per_outcome,
+            explore_candidates=explore_candidates,
+        )
+        parsed["explorations"].append({"depth": exploratory_depth, "result": exploratory})
     return parsed
+
+
+def line_positions(fen: str, line: list[str]) -> list[dict]:
+    node = shutil.which("node") or shutil.which("node.exe")
+    if node is None:
+        raise RuntimeError("Node.js is required to preview puzzle lines")
+    result = subprocess.run(
+        [node, str(ROOT / "scripts" / "line_positions.mjs"), fen, json.dumps(line)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
 
 
 def describe_puzzle(image_path: Path, details: dict) -> dict:

@@ -78,6 +78,8 @@ const llmDetails = {
   outcome_counts: Object.fromEntries(Object.entries(Object.groupBy(shallowOutcomes, (summary) => summary.outcome)).map(([outcome, lines]) => [outcome, lines.length])),
   representative_ideas: representativeIdeas,
   risk_lines: riskIdeas.slice(0, 2),
+  solution_line: realSolution.notation,
+  warning_lines: riskIdeas.slice(0, 2).map((line) => line.notation),
   real_solution: realSolution,
   notation_rule: "Use SAN notation for prose. UCI moves are included only for exact reference.",
 };
@@ -96,10 +98,14 @@ let descriptionError = null;
 try {
   metadata = await describePuzzle({ imagePath: capturePath, details: llmDetails }, { trace: descriptionTrace });
 } catch (error) { descriptionError = error.message; }
+if (metadata) {
+  metadata.solution_line = realSolution.notation.join(" ");
+  metadata.warning_lines = riskIdeas.slice(0, 2).map((line) => line.notation.join(" "));
+}
 const relativeImage = path.relative(path.dirname(reportPath), capturePath).replaceAll("\\", "/");
 const sourceImage = imagePath ? path.relative(path.dirname(reportPath), path.resolve(imagePath)).replaceAll("\\", "/") : null;
 const fallbackWarning = riskIdeas.length > 0 ? `Avoid ${riskIdeas[0].notation[0] ?? "the losing move"}; the searched reply leads to ${riskIdeas[0].notation.slice(1).join(" ")}.` : "Avoid assuming that every attractive move is losing; no concrete losing line was established at the searched depths.";
-const fallbackMetadata = { title: "The Bishop's Promotion Blockade", short_description: `The key move ${realSolution.notation[0] ?? "the first move"} turns a promotion race into a forced mate.`, description: `At depth ${depth}, the key move is ${realSolution.notation[0] ?? "the first move"}, forcing the verified line ${realSolution.notation.join(" ")}. The shallower candidates were useful drawing ideas, but they missed the precise mating net. The final position contains ${realSolution.material.white} for White and ${realSolution.material.black} for Black.`, warning: fallbackWarning };
+const fallbackMetadata = { title: "The Bishop's Promotion Blockade", short_description: `The key move ${realSolution.notation[0] ?? "the first move"} turns a promotion race into a forced mate.`, description: `At depth ${depth}, the key move is ${realSolution.notation[0] ?? "the first move"}, forcing the verified line ${realSolution.notation.join(" ")}. The shallower candidates were useful drawing ideas, but they missed the precise mating net. The final position contains ${realSolution.material.white} for White and ${realSolution.material.black} for Black.`, warning: fallbackWarning, solution_line: realSolution.notation.join(" "), warning_lines: riskIdeas.slice(0, 2).map((line) => line.notation.join(" ")) };
 metadata ??= fallbackMetadata;
 const json = (value) => `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
 const lines = [

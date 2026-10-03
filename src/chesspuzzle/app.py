@@ -8,7 +8,7 @@ import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
 
-from designer import capture_design, describe_puzzle, generate_report, rank_solutions
+from designer import capture_design, describe_puzzle, generate_report, line_positions, rank_solutions
 
 logger = logging.getLogger("chesspuzzle")
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -73,6 +73,40 @@ def component_saved_state(component_key: str) -> dict | None:
     saved_state = stored.get("state") if isinstance(stored, dict) else None
     st.session_state[f"{component_key}-hydrated"] = True
     return saved_state if isinstance(saved_state, dict) else None
+
+
+def designer_line_catalog(result: dict) -> list[dict]:
+    catalog = []
+    seen = set()
+
+    def add_lines(source: str, depth: int, candidates: list[dict]) -> None:
+        for candidate in candidates:
+            moves = tuple(candidate.get("pv", []))
+            if not moves:
+                continue
+            identity = (source, moves)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            score = candidate.get("score")
+            evaluation = f"mate {candidate['mate']}" if candidate.get("mate") is not None else f"{score:+.2f}" if isinstance(score, (int, float)) else "unknown"
+            catalog.append({
+                "label": f"{source} | {moves[0]} | {evaluation}",
+                "source": source,
+                "depth": depth,
+                "moves": list(moves),
+                "outcome": candidate.get("outcome", "examined"),
+                "evaluation": evaluation,
+                "pieces": candidate.get("involved_pieces", []),
+            })
+
+    first_position = result.get("line", [{}])[0] if result.get("line") else {}
+    add_lines("Verified search", result.get("depth", 0), first_position.get("candidates", []))
+    for exploration in result.get("explorations", []):
+        exploratory = exploration["result"]
+        position = exploratory.get("line", [{}])[0] if exploratory.get("line") else {}
+        add_lines(f"Exploration depth {exploration['depth']}", exploration["depth"], position.get("candidates", []))
+    return catalog
 
 
 st.set_page_config(page_title="Chess Puzzle", layout="wide")
@@ -253,51 +287,63 @@ with designer_tab:
                     if uploaded:
                         image_path = Path(tempfile.gettempdir()) / f"chesspuzzle-designer-{uploaded.name}"
                         image_path.write_bytes(uploaded.getvalue())
-                    solved = rank_solutions(designer_fen, image_path=image_path, setup_move=setup_move, side_to_move=side_to_move, depth=analysis_depth, per_outcome=representatives_per_outcome)
+                    solved = rank_solutions(designer_fen, image_path=image_path, setup_move=setup_move, side_to_move=side_to_move, depth=analysis_depth, per_outcome=representatives_per_outcome, explore_depths=exploratory_depths, explore_candidates=exploratory_candidates)
                     st.session_state["designer-result"] = solved
                     st.session_state["designer-fen-active"] = solved["startFen"]
-                    st.session_state["designer-selected"] = 0
+                    st.session_state["designer-line-set"] = "All examined"
+                    st.session_state["designer-line-selected"] = 0
+                    st.session_state["designer-step"] = 0
                     st.session_state.pop("designer-metadata", None)
                 except Exception as error:
                     st.error(str(error))
         result = st.session_state.get("designer-result")
         if result:
-            first_position = result.get("line", [{}])[0] if result.get("line") else {}
-            candidates = first_position.get("candidates", [])
-            classified = result.get("candidate_classification", {})
-            candidate_options = classified.get("representatives", []) or candidates
-            if not candidates:
+            all_lines = designer_line_catalog(result)
+            if not all_lines:
                 st.warning("The solver returned no candidate moves for this position. Try a deeper search or verify the side to move.")
-            def candidate_label(index: int, candidate: dict) -> str:
-                value = candidate["score"] if candidate["score"] is not None else f"mate {candidate['mate']}"
-                return f"{index + 1}. {candidate['pv'][0]} | {value}"
-
-            labels = [candidate_label(index, candidate) for index, candidate in enumerate(candidate_options)]
-            if candidate_options:
-                selected_index = st.selectbox("Favored solution", range(len(candidate_options)), format_func=lambda index: labels[index], key="designer-selected")
-                selected = candidate_options[selected_index]
+            line_sets = {
+                "All examined": all_lines,
+                "Verified solution": [line for line in all_lines if line["source"] == "Verified search"][:1],
+                "Warning lines": [line for line in all_lines if line["outcome"] in {"losing", "forced loss"}],
+                "Representative lines": [line for line in all_lines if line["source"] == "Verified search" or line["outcome"] in {"forced mate", "winning", "losing", "forced loss"}],
+            }
+            line_set = st.selectbox("Lines to inspect", list(line_sets), key="designer-line-set")
+            selected_lines = line_sets[line_set]
+            if selected_lines:
+                selected_line_index = min(st.session_state.get("designer-line-selected", 0), len(selected_lines) - 1)
+                selected_line_index = st.selectbox("Selected line", range(len(selected_lines)), format_func=lambda index: selected_lines[index]["label"], index=selected_line_index, key="designer-line-selected")
+                selected = selected_lines[selected_line_index]
                 st.caption(f"Authoritative Stockfish search depth: {result.get('depth', 'unknown')}")
-                classification = result.get("candidate_classification", {})
-                for outcome, outcome_candidates in classification.get("groups", {}).items():
-                    st.write(f"{outcome.title()}: {len(outcome_candidates)} candidate(s); pieces: {', '.join(sorted({piece for candidate in outcome_candidates for piece in candidate.get('involved_pieces', [])})) or 'unknown'}")
-                st.json({"bestmove": selected["pv"][0], "principal_variation": selected["pv"], "objective": objective})
+                st.write(f"Outcome: {selected['outcome']} | Evaluation: {selected['evaluation']} | Pieces: {', '.join(selected['pieces']) or 'unknown'}")
+                st.json({"line": selected["moves"], "source": selected["source"], "depth": selected["depth"]})
     with preview_col:
         st.subheader("2. Position pair")
         active_fen = st.session_state.get("designer-fen-active", designer_fen or STANDARD_FEN)
         selected_line = []
         if st.session_state.get("designer-result"):
-            first_position = st.session_state["designer-result"].get("line", [{}])[0] if st.session_state["designer-result"].get("line") else {}
-            candidates = first_position.get("candidates", [])
-            candidate_options = st.session_state["designer-result"].get("candidate_classification", {}).get("representatives", []) or candidates
-            if candidate_options:
-                selected_index = min(st.session_state.get("designer-selected", 0), len(candidate_options) - 1)
-                selected_line = candidate_options[selected_index].get("pv", [])
-        start_key = f"designer-start-{st.session_state.get('designer-result', {}).get('startFen', 'empty')}"
-        render_board(key=start_key, fallback_state=None, props={"fen": active_fen, "orientation": "white", "playAs": "white", "puzzleMode": False, "puzzleMoves": selected_line})
-        final_fen = st.session_state.get("designer-result", {}).get("line", [{}])[-1].get("fen", active_fen)
-        st.caption("Starting position with the selected line")
-        render_board(key=f"designer-final-{final_fen}", fallback_state=None, props={"fen": final_fen, "orientation": "white", "playAs": "white", "puzzleMode": False})
-        st.caption("Final position")
+            catalog = designer_line_catalog(st.session_state["designer-result"])
+            line_sets = {
+                "All examined": catalog,
+                "Verified solution": [line for line in catalog if line["source"] == "Verified search"][:1],
+                "Warning lines": [line for line in catalog if line["outcome"] in {"losing", "forced loss"}],
+                "Representative lines": [line for line in catalog if line["source"] == "Verified search" or line["outcome"] in {"forced mate", "winning", "losing", "forced loss"}],
+            }
+            selected_lines = line_sets.get(st.session_state.get("designer-line-set", "All examined"), catalog)
+            if selected_lines:
+                selected_index = min(st.session_state.get("designer-line-selected", 0), len(selected_lines) - 1)
+                selected_line = selected_lines[selected_index]["moves"]
+        setup_move = st.session_state.get("designer-result", {}).get("setupMove")
+        preview_line = ([setup_move] if setup_move else []) + selected_line
+        positions = line_positions(active_fen, preview_line) if preview_line else [{"ply": 0, "fen": active_fen, "san": None, "move": None}]
+        step_index = min(st.session_state.get("designer-step", 0), len(positions) - 1)
+        step_index = st.selectbox("Step through selected line", range(len(positions)), format_func=lambda index: "Start position" if index == 0 else f"{index}. {positions[index]['san']} ({positions[index]['move']})", index=step_index, key="designer-step")
+        current_position = positions[step_index]
+        start_key = f"designer-start-{active_fen}"
+        render_board(key=start_key, fallback_state=None, props={"fen": active_fen, "orientation": "white", "playAs": "white", "puzzleMode": False})
+        st.caption("Starting position")
+        render_board(key=f"designer-step-{active_fen}-{step_index}-{current_position['fen']}", fallback_state=None, props={"fen": current_position["fen"], "orientation": "white", "playAs": "white", "puzzleMode": False})
+        st.caption(f"Position after {step_index} move(s)")
+        st.json(current_position)
         if st.button("Create title and factual description", key="designer-describe"):
             if not st.session_state.get("designer-result") or not selected_line:
                 st.error("Solve the position and select a solution first.")
@@ -312,4 +358,7 @@ with designer_tab:
             st.subheader(metadata.get("title", "Puzzle title"))
             st.caption(metadata.get("short_description", ""))
             st.warning(metadata.get("warning", ""))
+            st.code(f"Verified solution: {metadata.get('solution_line', '')}")
+            for warning_line in metadata.get("warning_lines", []):
+                st.code(f"Verified risk line: {warning_line}")
             st.write(metadata.get("description", ""))

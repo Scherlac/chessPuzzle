@@ -27,7 +27,7 @@ export async function describePuzzle({ imagePath, details }, options = {}) {
 Title rules: 3 to 8 words, memorable and genuinely playful, with chess-specific wordplay. Do not use stereotypes, nationality jokes, or cultural references that target a group. Do not claim a win unless the verified result says mate or a material advantage.
 Short description: one sentence explaining the tactical idea and result.
 Description: 2 to 4 sentences telling the story: what the tempting ideas do, which exploratory lines are traps, what punishment the defender can give, what the key move changes, and how the verified line ends. Mention the important pieces and material only when supported by the facts. Use algebraic move notation where available. Never invent a capture, check, mate, or evaluation. Treat risk_lines as warnings, not as the solution.
-Warning: one direct sentence beginning with “Avoid ...” that names the concrete losing move or plan and the punishment shown by risk_lines. If no losing line was found, say that no concrete losing line was established at the searched depths.
+Warning: one direct sentence beginning with “Avoid ...” that names the concrete losing move or plan and the punishment shown by risk_lines. Use the exact SAN sequences from solution_line and warning_lines; do not invent or alter moves. If no losing line was found, say that no concrete losing line was established at the searched depths.
 
 Verified puzzle analysis:
 ${JSON.stringify(details, null, 2)}`;
