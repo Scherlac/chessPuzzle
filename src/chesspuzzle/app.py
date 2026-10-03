@@ -238,6 +238,10 @@ with designer_tab:
         side_to_move = st.selectbox("Side to move", ["w", "b"], format_func=lambda value: "White" if value == "w" else "Black", key="designer-side")
         objective = st.selectbox("Objective", ["gain", "concept", "mate"], key="designer-objective")
         winner = st.selectbox("Winner", ["White", "Black", "Draw"], key="designer-winner")
+        analysis_depth = st.selectbox("Analysis depth", [12, 18, 22, 25], index=3, key="designer-depth")
+        exploratory_depths = st.multiselect("Exploratory depths", [6, 10, 12, 16], default=[6, 12, 16], key="designer-explore-depths")
+        exploratory_candidates = st.selectbox("Exploratory candidate breadth", [5, 10, 20], index=2, key="designer-explore-candidates")
+        representatives_per_outcome = st.selectbox("Lines per outcome", [1, 2], index=1, key="designer-lines-per-outcome")
         setup_move = st.text_input("Optional setup move (UCI)", key="designer-setup") or None
         solve_clicked = st.button("Solve and rank lines", type="primary", key="designer-solve")
         if solve_clicked:
@@ -249,28 +253,45 @@ with designer_tab:
                     if uploaded:
                         image_path = Path(tempfile.gettempdir()) / f"chesspuzzle-designer-{uploaded.name}"
                         image_path.write_bytes(uploaded.getvalue())
-                    st.session_state["designer-result"] = rank_solutions(designer_fen, image_path=image_path, setup_move=setup_move, side_to_move=side_to_move)
-                    st.session_state["designer-fen-active"] = st.session_state["designer-result"]["startFen"]
+                    solved = rank_solutions(designer_fen, image_path=image_path, setup_move=setup_move, side_to_move=side_to_move, depth=analysis_depth, per_outcome=representatives_per_outcome)
+                    st.session_state["designer-result"] = solved
+                    st.session_state["designer-fen-active"] = solved["startFen"]
+                    st.session_state["designer-selected"] = 0
+                    st.session_state.pop("designer-metadata", None)
                 except Exception as error:
                     st.error(str(error))
         result = st.session_state.get("designer-result")
         if result:
-            candidates = result["line"][0]["candidates"] if result["line"] else []
+            first_position = result.get("line", [{}])[0] if result.get("line") else {}
+            candidates = first_position.get("candidates", [])
+            classified = result.get("candidate_classification", {})
+            candidate_options = classified.get("representatives", []) or candidates
+            if not candidates:
+                st.warning("The solver returned no candidate moves for this position. Try a deeper search or verify the side to move.")
             def candidate_label(index: int, candidate: dict) -> str:
                 value = candidate["score"] if candidate["score"] is not None else f"mate {candidate['mate']}"
                 return f"{index + 1}. {candidate['pv'][0]} | {value}"
 
-            labels = [candidate_label(index, candidate) for index, candidate in enumerate(candidates)]
-            selected_index = st.selectbox("Favored solution", range(len(candidates)), format_func=lambda index: labels[index], key="designer-selected")
-            selected = candidates[selected_index]
-            st.json({"bestmove": selected["pv"][0], "principal_variation": selected["pv"], "objective": objective})
+            labels = [candidate_label(index, candidate) for index, candidate in enumerate(candidate_options)]
+            if candidate_options:
+                selected_index = st.selectbox("Favored solution", range(len(candidate_options)), format_func=lambda index: labels[index], key="designer-selected")
+                selected = candidate_options[selected_index]
+                st.caption(f"Authoritative Stockfish search depth: {result.get('depth', 'unknown')}")
+                classification = result.get("candidate_classification", {})
+                for outcome, outcome_candidates in classification.get("groups", {}).items():
+                    st.write(f"{outcome.title()}: {len(outcome_candidates)} candidate(s); pieces: {', '.join(sorted({piece for candidate in outcome_candidates for piece in candidate.get('involved_pieces', [])})) or 'unknown'}")
+                st.json({"bestmove": selected["pv"][0], "principal_variation": selected["pv"], "objective": objective})
     with preview_col:
         st.subheader("2. Position pair")
         active_fen = st.session_state.get("designer-fen-active", designer_fen or STANDARD_FEN)
         selected_line = []
         if st.session_state.get("designer-result"):
-            selected_index = st.session_state.get("designer-selected", 0)
-            selected_line = st.session_state["designer-result"]["line"][0]["candidates"][selected_index]["pv"]
+            first_position = st.session_state["designer-result"].get("line", [{}])[0] if st.session_state["designer-result"].get("line") else {}
+            candidates = first_position.get("candidates", [])
+            candidate_options = st.session_state["designer-result"].get("candidate_classification", {}).get("representatives", []) or candidates
+            if candidate_options:
+                selected_index = min(st.session_state.get("designer-selected", 0), len(candidate_options) - 1)
+                selected_line = candidate_options[selected_index].get("pv", [])
         start_key = f"designer-start-{st.session_state.get('designer-result', {}).get('startFen', 'empty')}"
         render_board(key=start_key, fallback_state=None, props={"fen": active_fen, "orientation": "white", "playAs": "white", "puzzleMode": False, "puzzleMoves": selected_line})
         final_fen = st.session_state.get("designer-result", {}).get("line", [{}])[-1].get("fen", active_fen)
@@ -282,11 +303,13 @@ with designer_tab:
                 st.error("Solve the position and select a solution first.")
             else:
                 try:
-                    report_result = generate_report(active_fen, selected_line, APP_ROOT / "reports" / "puzzle-designer-report.md", side_to_move=side_to_move, objective=objective, winner=winner)
+                    report_result = generate_report(active_fen, selected_line, APP_ROOT / "reports" / "puzzle-designer-report.md", side_to_move=side_to_move, objective=objective, winner=winner, depth=analysis_depth, per_outcome=representatives_per_outcome, explore_depths=exploratory_depths, explore_candidates=exploratory_candidates)
                     st.session_state["designer-metadata"] = report_result.get("metadata")
                 except Exception as error:
                     st.error(str(error))
         metadata = st.session_state.get("designer-metadata")
         if metadata:
             st.subheader(metadata.get("title", "Puzzle title"))
+            st.caption(metadata.get("short_description", ""))
+            st.warning(metadata.get("warning", ""))
             st.write(metadata.get("description", ""))
