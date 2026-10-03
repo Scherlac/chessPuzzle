@@ -351,7 +351,13 @@ with designer_tab:
             if selected_lines:
                 line_selection_key = f"designer-line-selected-{line_set}"
                 selected_index = min(st.session_state.get(line_selection_key, 0), len(selected_lines) - 1)
-                selected_index = st.selectbox("Line", range(len(selected_lines)), format_func=lambda index: selected_lines[index]["label"], index=selected_index, key=line_selection_key)
+                line_selectbox_args = {
+                    "format_func": lambda index: selected_lines[index]["label"],
+                    "key": line_selection_key,
+                }
+                if line_selection_key not in st.session_state:
+                    line_selectbox_args["index"] = selected_index
+                selected_index = st.selectbox("Line", range(len(selected_lines)), **line_selectbox_args)
                 selected = selected_lines[selected_index]
                 selected_line = selected["moves"]
                 st.caption(f"{selected['outcome'].title()} | evaluation {selected['evaluation']} | {', '.join(selected['pieces']) or 'pieces unavailable'}")
@@ -370,7 +376,13 @@ with designer_tab:
                 st.session_state["designer-step"] = step_index + 1
                 st.rerun()
         with position_col:
-            step_index = st.selectbox("Board position", range(len(positions)), format_func=lambda index: "Start position" if index == 0 else f"After {index}: {positions[index]['san']} ({positions[index]['move']})", index=step_index, key="designer-step")
+            step_selectbox_args = {
+                "format_func": lambda index: "Start position" if index == 0 else f"After {index}: {positions[index]['san']} ({positions[index]['move']})",
+                "key": "designer-step",
+            }
+            if "designer-step" not in st.session_state:
+                step_selectbox_args["index"] = step_index
+            step_index = st.selectbox("Board position", range(len(positions)), **step_selectbox_args)
         current_position = positions[step_index]
         render_board(key="designer-step-board", fallback_state=None, props={"fen": current_position["fen"], "orientation": "white", "playAs": "white", "puzzleMode": False, "preserveInstance": True, "animatePosition": True})
         st.caption("Observed position")
