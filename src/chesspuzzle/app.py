@@ -8,7 +8,7 @@ import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
 
-from designer import capture_design, describe_puzzle, generate_report, line_positions, rank_solutions
+from designer import classify_candidates, capture_design, describe_puzzle, generate_report, line_positions, rank_solutions
 
 logger = logging.getLogger("chesspuzzle")
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -100,12 +100,17 @@ def designer_line_catalog(result: dict) -> list[dict]:
                 "pieces": candidate.get("involved_pieces", []),
             })
 
+    def candidates_for(result: dict, position: dict) -> list[dict]:
+        groups = result.get("candidate_classification", {}).get("groups", {})
+        classified = [candidate for group in groups.values() for candidate in group]
+        return classified or position.get("candidates", [])
+
     first_position = result.get("line", [{}])[0] if result.get("line") else {}
-    add_lines("Verified search", result.get("depth", 0), first_position.get("candidates", []))
+    add_lines("Verified search", result.get("depth", 0), candidates_for(result, first_position))
     for exploration in result.get("explorations", []):
         exploratory = exploration["result"]
         position = exploratory.get("line", [{}])[0] if exploratory.get("line") else {}
-        add_lines(f"Exploration depth {exploration['depth']}", exploration["depth"], position.get("candidates", []))
+        add_lines(f"Exploration depth {exploration['depth']}", exploration["depth"], candidates_for(exploratory, position))
     return catalog
 
 
@@ -287,13 +292,35 @@ with designer_tab:
                     if uploaded:
                         image_path = Path(tempfile.gettempdir()) / f"chesspuzzle-designer-{uploaded.name}"
                         image_path.write_bytes(uploaded.getvalue())
-                    solved = rank_solutions(designer_fen, image_path=image_path, setup_move=setup_move, side_to_move=side_to_move, depth=analysis_depth, per_outcome=representatives_per_outcome, explore_depths=exploratory_depths, explore_candidates=exploratory_candidates)
+                    report_result = generate_report(
+                        designer_fen,
+                        [],
+                        APP_ROOT / "reports" / "puzzle-designer-report.md",
+                        image_path=image_path,
+                        side_to_move=side_to_move,
+                        objective=objective,
+                        winner=winner,
+                        depth=analysis_depth,
+                        per_outcome=representatives_per_outcome,
+                        explore_depths=exploratory_depths,
+                        explore_candidates=exploratory_candidates,
+                        setup_move=setup_move,
+                    )
+                    solved = report_result["analysis"]
+                    first_position = solved.get("line", [{}])[0] if solved.get("line") else {}
+                    solved["candidate_classification"] = classify_candidates(solved["startFen"], first_position.get("candidates", []), representatives_per_outcome)
+                    for exploration in solved.get("explorations", []):
+                        exploratory = exploration["result"]
+                        exploratory_position = exploratory.get("line", [{}])[0] if exploratory.get("line") else {}
+                        exploratory["candidate_classification"] = classify_candidates(exploratory["startFen"], exploratory_position.get("candidates", []), representatives_per_outcome)
                     st.session_state["designer-result"] = solved
                     st.session_state["designer-fen-active"] = solved["startFen"]
                     st.session_state["designer-line-set"] = "All examined"
                     st.session_state["designer-line-selected"] = 0
                     st.session_state["designer-step"] = 0
-                    st.session_state.pop("designer-metadata", None)
+                    st.session_state["designer-report"] = report_result
+                    st.session_state["designer-metadata"] = report_result.get("metadata")
+                    st.success("Analysis, report, and LLM description generated.")
                 except Exception as error:
                     st.error(str(error))
         result = st.session_state.get("designer-result")
@@ -301,25 +328,15 @@ with designer_tab:
             all_lines = designer_line_catalog(result)
             if not all_lines:
                 st.warning("The solver returned no candidate moves for this position. Try a deeper search or verify the side to move.")
-            line_sets = {
-                "All examined": all_lines,
-                "Verified solution": [line for line in all_lines if line["source"] == "Verified search"][:1],
-                "Warning lines": [line for line in all_lines if line["outcome"] in {"losing", "forced loss"}],
-                "Representative lines": [line for line in all_lines if line["source"] == "Verified search" or line["outcome"] in {"forced mate", "winning", "losing", "forced loss"}],
-            }
-            line_set = st.selectbox("Lines to inspect", list(line_sets), key="designer-line-set")
-            selected_lines = line_sets[line_set]
-            if selected_lines:
-                selected_line_index = min(st.session_state.get("designer-line-selected", 0), len(selected_lines) - 1)
-                selected_line_index = st.selectbox("Selected line", range(len(selected_lines)), format_func=lambda index: selected_lines[index]["label"], index=selected_line_index, key="designer-line-selected")
-                selected = selected_lines[selected_line_index]
-                st.caption(f"Authoritative Stockfish search depth: {result.get('depth', 'unknown')}")
-                st.write(f"Outcome: {selected['outcome']} | Evaluation: {selected['evaluation']} | Pieces: {', '.join(selected['pieces']) or 'unknown'}")
-                st.json({"line": selected["moves"], "source": selected["source"], "depth": selected["depth"]})
+            outcome_counts = {}
+            for line in all_lines:
+                outcome_counts[line["outcome"]] = outcome_counts.get(line["outcome"], 0) + 1
+            st.caption(f"{len(all_lines)} examined lines | " + " | ".join(f"{outcome}: {count}" for outcome, count in outcome_counts.items()))
     with preview_col:
         st.subheader("2. Position pair")
         active_fen = st.session_state.get("designer-fen-active", designer_fen or STANDARD_FEN)
         selected_line = []
+        selected = None
         if st.session_state.get("designer-result"):
             catalog = designer_line_catalog(st.session_state["designer-result"])
             line_sets = {
@@ -328,28 +345,43 @@ with designer_tab:
                 "Warning lines": [line for line in catalog if line["outcome"] in {"losing", "forced loss"}],
                 "Representative lines": [line for line in catalog if line["source"] == "Verified search" or line["outcome"] in {"forced mate", "winning", "losing", "forced loss"}],
             }
-            selected_lines = line_sets.get(st.session_state.get("designer-line-set", "All examined"), catalog)
+            st.markdown("#### Line explorer")
+            line_set = st.selectbox("Line group", list(line_sets), key="designer-line-set")
+            selected_lines = line_sets[line_set]
             if selected_lines:
-                selected_index = min(st.session_state.get("designer-line-selected", 0), len(selected_lines) - 1)
-                selected_line = selected_lines[selected_index]["moves"]
+                line_selection_key = f"designer-line-selected-{line_set}"
+                selected_index = min(st.session_state.get(line_selection_key, 0), len(selected_lines) - 1)
+                selected_index = st.selectbox("Line", range(len(selected_lines)), format_func=lambda index: selected_lines[index]["label"], index=selected_index, key=line_selection_key)
+                selected = selected_lines[selected_index]
+                selected_line = selected["moves"]
+                st.caption(f"{selected['outcome'].title()} | evaluation {selected['evaluation']} | {', '.join(selected['pieces']) or 'pieces unavailable'}")
+                st.code(" ".join(selected_line))
         setup_move = st.session_state.get("designer-result", {}).get("setupMove")
         preview_line = ([setup_move] if setup_move else []) + selected_line
         positions = line_positions(active_fen, preview_line) if preview_line else [{"ply": 0, "fen": active_fen, "san": None, "move": None}]
         step_index = min(st.session_state.get("designer-step", 0), len(positions) - 1)
-        step_index = st.selectbox("Step through selected line", range(len(positions)), format_func=lambda index: "Start position" if index == 0 else f"{index}. {positions[index]['san']} ({positions[index]['move']})", index=step_index, key="designer-step")
+        previous_col, position_col, next_col = st.columns([1, 2, 1], vertical_alignment="bottom")
+        with previous_col:
+            if st.button("Previous", key="designer-step-previous", disabled=step_index == 0):
+                st.session_state["designer-step"] = step_index - 1
+                st.rerun()
+        with next_col:
+            if st.button("Next", key="designer-step-next", disabled=step_index >= len(positions) - 1):
+                st.session_state["designer-step"] = step_index + 1
+                st.rerun()
+        with position_col:
+            step_index = st.selectbox("Board position", range(len(positions)), format_func=lambda index: "Start position" if index == 0 else f"After {index}: {positions[index]['san']} ({positions[index]['move']})", index=step_index, key="designer-step")
         current_position = positions[step_index]
-        start_key = f"designer-start-{active_fen}"
-        render_board(key=start_key, fallback_state=None, props={"fen": active_fen, "orientation": "white", "playAs": "white", "puzzleMode": False})
-        st.caption("Starting position")
-        render_board(key=f"designer-step-{active_fen}-{step_index}-{current_position['fen']}", fallback_state=None, props={"fen": current_position["fen"], "orientation": "white", "playAs": "white", "puzzleMode": False})
-        st.caption(f"Position after {step_index} move(s)")
+        render_board(key="designer-step-board", fallback_state=None, props={"fen": current_position["fen"], "orientation": "white", "playAs": "white", "puzzleMode": False, "preserveInstance": True, "animatePosition": True})
+        st.caption("Observed position")
         st.json(current_position)
         if st.button("Create title and factual description", key="designer-describe"):
             if not st.session_state.get("designer-result") or not selected_line:
                 st.error("Solve the position and select a solution first.")
             else:
                 try:
-                    report_result = generate_report(active_fen, selected_line, APP_ROOT / "reports" / "puzzle-designer-report.md", side_to_move=side_to_move, objective=objective, winner=winner, depth=analysis_depth, per_outcome=representatives_per_outcome, explore_depths=exploratory_depths, explore_candidates=exploratory_candidates)
+                    report_result = generate_report(active_fen, selected_line, APP_ROOT / "reports" / "puzzle-designer-report.md", side_to_move=side_to_move, objective=objective, winner=winner, depth=analysis_depth, per_outcome=representatives_per_outcome, explore_depths=exploratory_depths, explore_candidates=exploratory_candidates, setup_move=setup_move)
+                    st.session_state["designer-report"] = report_result
                     st.session_state["designer-metadata"] = report_result.get("metadata")
                 except Exception as error:
                     st.error(str(error))
@@ -362,3 +394,6 @@ with designer_tab:
             for warning_line in metadata.get("warning_lines", []):
                 st.code(f"Verified risk line: {warning_line}")
             st.write(metadata.get("description", ""))
+            report = st.session_state.get("designer-report", {})
+            if report.get("report"):
+                st.caption(f"Full analysis report: {report['report']}")

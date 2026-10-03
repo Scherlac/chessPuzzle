@@ -16,6 +16,7 @@ const sideToMove = value("--side-to-move", fen?.split(/\s+/)[1] ?? "w");
 const objective = value("--objective", puzzle?.themes?.includes("mate") ? "mate" : "concept");
 const winner = value("--winner", "White");
 const declaredLine = value("--line") ? JSON.parse(value("--line")) : null;
+const setupMove = value("--setup");
 const candidates = Number(value("--candidates", "5"));
 const exploreCandidates = Number(value("--explore-candidates", "20"));
 const depth = Number(value("--depth", "25"));
@@ -29,7 +30,7 @@ const trace = {};
 const expectedLine = puzzle?.moves ?? declaredLine ?? [];
 const solve = async (solveDepth, solveTrace = {}, multipv = candidates) => puzzle
   ? solvePuzzle(puzzle, { depth: solveDepth, plies: Number(value("--plies", "6")), multipv, trace: solveTrace })
-  : solvePosition({ imagePath: imagePath ? path.resolve(imagePath) : undefined, fen, sideToMove, depth: solveDepth, plies: Number(value("--plies", "6")), expected: expectedLine, followExpected: expectedLine.length > 0, multipv, trace: solveTrace });
+  : solvePosition({ imagePath: imagePath ? path.resolve(imagePath) : undefined, fen, setupMove, sideToMove, depth: solveDepth, plies: Number(value("--plies", "6")), expected: expectedLine, followExpected: expectedLine.length > 0, multipv, trace: solveTrace });
 const solved = await solve(depth, trace);
 const exploratoryRuns = [];
 for (const exploratoryDepth of exploreDepths) exploratoryRuns.push({ depth: exploratoryDepth, result: await solve(exploratoryDepth, {}, exploreCandidates) });
@@ -90,7 +91,7 @@ const capture = await new Promise((resolve, reject) => {
   let output = ""; let errors = "";
   child.stdout.on("data", (chunk) => { output += chunk; }); child.stderr.on("data", (chunk) => { errors += chunk; });
   child.on("close", (code) => code ? reject(new Error(errors)) : resolve(JSON.parse(output)));
-  child.stdin.end(JSON.stringify({ fen: solved.startFen, line: chosenLine, output: capturePath }));
+  child.stdin.end(JSON.stringify({ fen: solved.startFen, line: chosenLine, setupMove: solved.setupMove, output: capturePath }));
 });
 const descriptionTrace = {};
 let metadata = null;
@@ -121,4 +122,4 @@ const lines = [
 ];
 await mkdir(path.dirname(reportPath), { recursive: true });
 await writeFile(reportPath, lines.join("\n"), "utf8");
-process.stdout.write(`${JSON.stringify({ report: reportPath, image: capturePath, metadata })}\n`);
+process.stdout.write(`${JSON.stringify({ report: reportPath, image: capturePath, metadata, analysis: { ...solved, explorations: exploratoryRuns } })}\n`);

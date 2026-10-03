@@ -8,6 +8,7 @@ export default function (component) {
   delete configuration.state;
   delete configuration.command;
   delete configuration.value;
+  if (configuration.preserveInstance) delete configuration.fen;
   const configurationSignature = JSON.stringify(configuration);
   const existingState = parentElement.__chesspuzzleCheckerState;
   if (existingState && existingState.name === name && existingState.configurationSignature === configurationSignature) {

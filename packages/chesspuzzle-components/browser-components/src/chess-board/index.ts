@@ -5,6 +5,8 @@ import styles from "./board.css";
 
 type BoardProps = {
   fen?: string;
+  preserveInstance?: boolean;
+  animatePosition?: boolean;
   orientation?: "white" | "black";
   playAs?: "white" | "black";
   enginePolicy?: "follow" | "play";
@@ -317,6 +319,15 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
 
   let lastCommandNonce = options.command?.nonce ?? 0;
   const applyCommand = (nextProps: BoardProps) => {
+    if (nextProps.orientation) board.orientation = nextProps.orientation;
+    if (nextProps.fen && nextProps.fen !== game.fen()) {
+      try {
+        game = new Chess(nextProps.fen);
+        board.setPosition(nextProps.fen, nextProps.animatePosition === true);
+      } catch (error) {
+        logBoardState("position update failed", { fen: nextProps.fen, error: String(error) });
+      }
+    }
     const command = nextProps.command;
     if (!command || command.nonce <= lastCommandNonce) return;
     lastCommandNonce = command.nonce;

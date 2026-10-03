@@ -156,16 +156,17 @@ def generate_report(
     per_outcome: int = 2,
     explore_depths: list[int] | None = None,
     explore_candidates: int = 20,
+    image_path: Path | None = None,
+    setup_move: str | None = None,
 ) -> dict:
     node = shutil.which("node") or shutil.which("node.exe")
     if node is None:
         raise RuntimeError("Node.js is required for puzzle report generation")
-    result = subprocess.run(
-        [
+    args = [
             node,
             str(ROOT / "scripts" / "generate_puzzle_design_report.mjs"),
-            "--fen", fen,
-            "--line", json.dumps(line),
+            "--image" if image_path else "--fen", str(image_path or fen),
+            "--setup", setup_move or "",
             "--side-to-move", side_to_move,
             "--objective", objective,
             "--winner", winner,
@@ -173,9 +174,13 @@ def generate_report(
             "--per-outcome", str(per_outcome),
             "--explore-depths", ",".join(str(value) for value in (explore_depths or [6, 12, 16])),
             "--explore-candidates", str(explore_candidates),
-            "--plies", str(len(line)),
+            "--plies", str(len(line) or 5),
             "--report", str(report_path),
-        ],
+        ]
+    if line:
+        args.extend(["--line", json.dumps(line)])
+    result = subprocess.run(
+        args,
         cwd=ROOT,
         capture_output=True,
         text=True,

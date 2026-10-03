@@ -5965,6 +5965,15 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     };
     let lastCommandNonce = options.command?.nonce ?? 0;
     const applyCommand = (nextProps) => {
+      if (nextProps.orientation) board.orientation = nextProps.orientation;
+      if (nextProps.fen && nextProps.fen !== game.fen()) {
+        try {
+          game = new Chess(nextProps.fen);
+          board.setPosition(nextProps.fen, nextProps.animatePosition === true);
+        } catch (error) {
+          logBoardState("position update failed", { fen: nextProps.fen, error: String(error) });
+        }
+      }
       const command = nextProps.command;
       if (!command || command.nonce <= lastCommandNonce) return;
       lastCommandNonce = command.nonce;
