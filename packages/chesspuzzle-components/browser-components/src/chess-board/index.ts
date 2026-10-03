@@ -208,14 +208,17 @@ export function createChessBoard(target: HTMLElement, props?: unknown, bridge?: 
   };
   if (hasSetupMove && !savedState && setupMove) {
     try {
-      const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
+      const move = game.move({
+        from: setupMove.slice(0, 2),
+        to: setupMove.slice(2, 4),
+        promotion: setupMove[4] ?? "q",
+      });
       gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });
-      puzzleIndex = 1;
-      refreshBoardAfterEvent(game.fen(), "deferred setup refresh");
+      refreshBoardAfterEvent(game.fen(), "animated setup refresh");
       logBoardState("after setup move", { uci: setupMove, san: move.san });
-    } catch {
+    } catch (error) {
       setStatus("Puzzle setup move is invalid");
-      logBoardState("setup move failed", { uci: setupMove });
+      logBoardState("setup move failed", { uci: setupMove, error: String(error) });
     }
   }
   const handleEngineMessage = (message: string) => {

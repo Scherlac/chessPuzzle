@@ -5726,7 +5726,8 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     const initialTurn = initialGame.turn();
     const playerColor = options.playAs ?? "white";
     const puzzleMoves = options.puzzleMoves ?? [];
-    const hasSetupMove = options.puzzleMode === true && puzzleMoves.length > 0;
+    const setupMove = options.puzzleMode === true ? options.puzzleSetupMove ?? null : null;
+    const hasSetupMove = Boolean(setupMove);
     const playerTurn = hasSetupMove ? initialTurn === "w" ? "b" : "w" : playerColor === "white" ? "w" : "b";
     const componentApi = bridge ?? { setStateValue: () => void 0, setTriggerValue: () => void 0 };
     const wrapper = document.createElement("div");
@@ -5754,7 +5755,7 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
     let engine;
     let engineReady = false;
     let engineThinking = false;
-    let puzzleIndex = savedState ? hasSetupMove ? savedState.puzzle.completed + 1 : savedState.puzzle.completed : 0;
+    let puzzleIndex = savedState ? savedState.puzzle.completed : 0;
     let puzzleDeviated = savedState?.puzzle.deviated ?? false;
     let enginePlan = savedState?.enginePlan ? [...savedState.enginePlan] : [];
     let evaluation = savedState?.evaluation ?? { score: null, mate: null, depth: null };
@@ -5803,8 +5804,8 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         canUndo: history.length > 0,
         puzzle: {
           enabled: Boolean(options.puzzleMode),
-          expected: hasSetupMove ? puzzleMoves.length - 1 : puzzleMoves.length,
-          completed: hasSetupMove ? Math.max(0, puzzleIndex - 1) : puzzleIndex,
+          expected: puzzleMoves.length,
+          completed: puzzleIndex,
           deviated: puzzleDeviated,
           complete: options.puzzleMode === true && puzzleIndex >= puzzleMoves.length
         }
@@ -5854,17 +5855,19 @@ var La=[YJ,Jk,Kk,gc,Nk,Yc,Zc,_c,Oc,Uc,Jh,Mk,$k,al,cl,dl,sm,ym,Em,Fm,Km,Lm,hp,op,
         return false;
       }
     };
-    if (hasSetupMove && !savedState) {
-      const setupMove = puzzleMoves[0];
+    if (hasSetupMove && !savedState && setupMove) {
       try {
-        const move = game.move({ from: setupMove.slice(0, 2), to: setupMove.slice(2, 4), promotion: setupMove[4] ?? "q" });
+        const move = game.move({
+          from: setupMove.slice(0, 2),
+          to: setupMove.slice(2, 4),
+          promotion: setupMove[4] ?? "q"
+        });
         gameSteps.push({ ply: 1, move: setupMove, san: move.san, actor: "puzzle" });
-        puzzleIndex = 1;
-        refreshBoardAfterEvent(game.fen(), "deferred setup refresh");
+        refreshBoardAfterEvent(game.fen(), "animated setup refresh");
         logBoardState("after setup move", { uci: setupMove, san: move.san });
-      } catch {
+      } catch (error) {
         setStatus("Puzzle setup move is invalid");
-        logBoardState("setup move failed", { uci: setupMove });
+        logBoardState("setup move failed", { uci: setupMove, error: String(error) });
       }
     }
     const handleEngineMessage = (message) => {

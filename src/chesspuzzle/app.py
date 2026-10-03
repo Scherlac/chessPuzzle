@@ -7,8 +7,8 @@ from pathlib import Path
 import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
-from chesspuzzle.designer import capture_design, describe_puzzle, generate_report, rank_solutions
 
+from designer import capture_design, describe_puzzle, generate_report, rank_solutions
 
 logger = logging.getLogger("chesspuzzle")
 APP_ROOT = Path(__file__).resolve().parents[2]
