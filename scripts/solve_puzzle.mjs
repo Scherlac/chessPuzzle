@@ -26,8 +26,13 @@ async function main() {
   const fen = args[0]?.startsWith("--") ? null : args[0];
   const depth = Number(args[1] ?? 18);
   const plies = Number(args[2] ?? 8);
-  const expected = args[3] ? JSON.parse(args[3]) : [];
-  const result = await solvePosition({ imagePath, fen, setupMove, sideToMove, depth, plies, expected });
+  const multipvIndex = args.indexOf("--multipv");
+  const multipv = multipvIndex >= 0 ? Number(args[multipvIndex + 1]) : 5;
+  const candidatesIndex = args.indexOf("--candidates");
+  const candidates = candidatesIndex >= 0 ? Number(args[candidatesIndex + 1]) : multipv;
+  const expected = args[3] && !args[3].startsWith("--") ? JSON.parse(args[3]) : [];
+  const followExpected = args.includes("--follow-expected");
+  const result = await solvePosition({ imagePath, fen, setupMove, sideToMove, depth, plies, expected, multipv: candidates, followExpected });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 

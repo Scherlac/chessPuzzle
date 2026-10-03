@@ -7,10 +7,11 @@ from pathlib import Path
 import streamlit as st
 
 from chess_components import check_component, load_components, load_puzzles
-from chesspuzzle.designer import capture_design, describe_puzzle, rank_solutions
+from chesspuzzle.designer import capture_design, describe_puzzle, generate_report, rank_solutions
 
 
 logger = logging.getLogger("chesspuzzle")
+APP_ROOT = Path(__file__).resolve().parents[2]
 STANDARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 
@@ -281,16 +282,8 @@ with designer_tab:
                 st.error("Solve the position and select a solution first.")
             else:
                 try:
-                    with tempfile.TemporaryDirectory() as temporary_directory:
-                        image_path = Path(temporary_directory) / "puzzle-design.png"
-                        capture_design(active_fen, selected_line, image_path, setup_move=setup_move)
-                        metadata = describe_puzzle(image_path, {
-                            "side_to_move": side_to_move,
-                            "objective": objective,
-                            "winner": winner,
-                            "line": selected_line,
-                        })
-                    st.session_state["designer-metadata"] = metadata
+                    report_result = generate_report(active_fen, selected_line, APP_ROOT / "reports" / "puzzle-designer-report.md", side_to_move=side_to_move, objective=objective, winner=winner)
+                    st.session_state["designer-metadata"] = report_result.get("metadata")
                 except Exception as error:
                     st.error(str(error))
         metadata = st.session_state.get("designer-metadata")

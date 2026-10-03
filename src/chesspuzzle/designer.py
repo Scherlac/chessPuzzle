@@ -64,3 +64,37 @@ def capture_design(fen: str, line: list[str], output_path: Path, setup_move: str
         check=True,
     )
     return json.loads(result.stdout)
+
+
+def generate_report(
+    fen: str,
+    line: list[str],
+    report_path: Path,
+    *,
+    side_to_move: str = "w",
+    objective: str = "concept",
+    winner: str = "White",
+    depth: int = 12,
+) -> dict:
+    node = shutil.which("node") or shutil.which("node.exe")
+    if node is None:
+        raise RuntimeError("Node.js is required for puzzle report generation")
+    result = subprocess.run(
+        [
+            node,
+            str(ROOT / "scripts" / "generate_puzzle_design_report.mjs"),
+            "--fen", fen,
+            "--line", json.dumps(line),
+            "--side-to-move", side_to_move,
+            "--objective", objective,
+            "--winner", winner,
+            "--depth", str(depth),
+            "--plies", str(len(line)),
+            "--report", str(report_path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)

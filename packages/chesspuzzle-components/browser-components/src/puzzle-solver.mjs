@@ -41,6 +41,27 @@ function applyMove(game, uci) {
   return game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] ?? "q" });
 }
 
+export function validatePuzzleLine(puzzle) {
+  const game = new Chess(puzzle.fen);
+  const moves = puzzle.moves ?? [];
+  if (puzzle.setup_move && !applyMove(game, puzzle.setup_move)) {
+    return { valid: false, legalMoves: false, error: `Illegal setup move: ${puzzle.setup_move}` };
+  }
+  for (const move of moves) {
+    if (!applyMove(game, move)) {
+      return { valid: false, legalMoves: false, error: `Illegal declared move: ${move}` };
+    }
+  }
+  return {
+    valid: true,
+    legalMoves: true,
+    expectedLineComplete: true,
+    finalFen: game.fen(),
+    finalGameOver: game.isGameOver(),
+    finalCheckmate: game.isCheckmate(),
+  };
+}
+
 function imageMime(path) {
   return { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" }[extname(path).toLowerCase()] ?? "image/png";
 }
@@ -92,9 +113,10 @@ export async function recognizePosition(imagePath, options = {}) {
   return recognized;
 }
 
-async function analyse(fen, depth) {
+async function analyse(fen, depth, multipv = 5) {
+  const effectiveMultipv = Math.min(Math.max(1, multipv), 500);
   outputLines.length = 0;
-  command("setoption name MultiPV value 5");
+  command(`setoption name MultiPV value ${effectiveMultipv}`);
   command(`position fen ${fen}`);
   command(`go depth ${depth}`);
   const lines = [];
@@ -125,7 +147,7 @@ async function analyse(fen, depth) {
 
 export async function solvePosition(options = {}) {
   loadDotEnv();
-  const { imagePath, setupMove = null, sideToMove = "w", depth = 18, plies = 8, expected = [] } = options;
+  const { imagePath, setupMove = null, sideToMove = "w", depth = 18, plies = 8, expected = [], followExpected = false, multipv = 5 } = options;
   const recognized = imagePath ? await recognizePosition(imagePath, options) : null;
   const recognizedFen = recognized?.fen ?? options.fen;
   const startFen = recognizedFen && recognizedFen.trim().split(/\s+/).length === 1
@@ -141,16 +163,26 @@ export async function solvePosition(options = {}) {
   if (setupMove && !applyMove(game, setupMove)) throw new Error(`Illegal setup move: ${setupMove}`);
   const line = [];
   for (let index = 0; index < plies && !game.isGameOver(); index += 1) {
-    const analysis = await analyse(game.fen(), depth);
     const expectedMove = expected[index] ?? null;
+    const analysis = await analyse(game.fen(), depth, expectedMove ? Math.max(multipv, 20) : multipv);
     const expectedRank = expectedMove ? analysis.candidates.findIndex((candidate) => candidate.pv[0] === expectedMove) + 1 : null;
     line.push({ fen: game.fen(), expected: expectedMove, expectedRank, ...analysis });
-    if (!analysis.bestmove || analysis.bestmove === "(none)" || !applyMove(game, analysis.bestmove)) break;
+    const nextMove = followExpected && expectedMove ? expectedMove : analysis.bestmove;
+    if (!nextMove || nextMove === "(none)" || !applyMove(game, nextMove)) break;
   }
   command("quit");
-  return { startFen, setupMove, recognized, depth, line };
+  return {
+    startFen,
+    setupMove,
+    recognized,
+    depth,
+    line,
+    finalFen: game.fen(),
+    expectedLineComplete: followExpected && line.length === expected.length,
+    expectedLineCheckmate: followExpected && line.length === expected.length && game.isCheckmate(),
+  };
 }
 
 export async function solvePuzzle(puzzle, options = {}) {
-  return solvePosition({ ...options, fen: puzzle.fen, setupMove: puzzle.setup_move ?? null, expected: puzzle.moves });
+  return solvePosition({ ...options, fen: puzzle.fen, setupMove: puzzle.setup_move ?? null, expected: puzzle.moves, followExpected: true });
 }

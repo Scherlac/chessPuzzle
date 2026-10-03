@@ -20,7 +20,7 @@ export async function describePuzzle({ imagePath, details }, options = {}) {
   const apiKey = options.apiKey ?? process.env.LLM_API_KEY;
   if (!apiKey) throw new Error("LLM_API_KEY is required for puzzle description");
   const baseUrl = (options.baseUrl ?? process.env.LLM_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = options.model ?? process.env.LLM_MODEL ?? "gpt-5.6-luna";
+  const model = options.model ?? "gpt-5.6-luna";
   const image = readFileSync(imagePath).toString("base64");
   const request = {
     model,
